@@ -1,0 +1,31 @@
+{
+  "name": "ghost-syndicate",
+  "private": true,
+  "scripts": {
+    "dev:bot": "tsx apps/bot/src/index.ts",
+    "dev:web": "tsx apps/web/src/server.ts",
+    "dev": "concurrently \"npm run dev:bot\" \"npm run dev:web\"",
+    "build": "tsc -p apps/bot/tsconfig.json && tsc -p apps/web/tsconfig.json",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.18.0",
+    "cors": "^2.8.5",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "zod": "^4.0.15"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "concurrently": "^9.2.1",
+    "prisma": "^6.18.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.2"
+  }
+}

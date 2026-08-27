@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Guild {
+  id              String   @id
+  name            String
+  cashBalance     Int      @default(450000)
+  dailyGoal       Int      @default(0)
+  reserve         Int      @default(0)
+  updatedAt       DateTime @updatedAt
+  members         Member[]
+  cashMovements   CashMovement[]
+  loans           Loan[]
+  operations      Operation[]
+  missions        Mission[]
+  voiceSessions   VoiceSession[]
+}
+
+model Member {
+  id            String   @id
+  guildId       String
+  username      String
+  displayName   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  voiceSessions VoiceSession[]
+  cashMovements CashMovement[]
+  loans         Loan[]
+}
+
+model CashMovement {
+  id           String   @id @default(cuid())
+  guildId      String
+  memberId     String?
+  type         String
+  amount       Int
+  reason       String
+  responsible  String
+  createdAt    DateTime @default(now())
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member       Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  @@index([guildId, createdAt])
+}
+
+model Loan {
+  id            String   @id @default(cuid())
+  guildId       String
+  memberId      String
+  type          String
+  value         String
+  dueAt         DateTime
+  interest      String   @default("Sem juros")
+  status        String   @default("ATIVO")
+  createdAt     DateTime @default(now())
+  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member        Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model Operation {
+  id           String   @id @default(cuid())
+  guildId      String
+  name         String
+  dateLabel    String
+  timeLabel    String
+  responsible  String
+  objective    String
+  reward       String
+  status       String   @default("AGUARDANDO")
+  createdAt    DateTime @default(now())
+  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model Mission {
+  id          String   @id @default(cuid())
+  guildId     String
+  name        String
+  reward      Int
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model VoiceSession {
+  id        String    @id @default(cuid())
+  guildId   String
+  memberId  String
+  channelId String
+  startedAt DateTime
+  endedAt   DateTime?
+  seconds   Int       @default(0)
+  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  @@index([guildId, memberId, startedAt])
+}
