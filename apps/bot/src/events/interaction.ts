@@ -19,18 +19,28 @@ import {
   ensureGuild,
   ensureMember,
 } from '../services/finance.js';
+
 import {
   memberVoiceSeconds,
   topVoice,
 } from '../services/voice.js';
+
 import {
   createTranscript,
 } from '../services/transcript.js';
+
 import {
   duration,
   money,
 } from '../utils/format.js';
-import { config } from '../utils/config.js';
+
+import {
+  config,
+} from '../utils/config.js';
+
+/* =========================================================
+   INTERACTION PRINCIPAL
+========================================================= */
 
 export async function onInteraction(
   interaction: Interaction,
@@ -47,7 +57,7 @@ export async function onInteraction(
     }
   } catch (error) {
     console.error(
-      '[INTERACTION ERROR]',
+      '❌ [INTERACTION ERROR]',
       error,
     );
 
@@ -66,6 +76,7 @@ async function handleCommand(
     await safeReply(
       interaction,
       '❌ Este comando só pode ser usado dentro de um servidor.',
+      true,
     );
 
     return;
@@ -81,8 +92,9 @@ async function handleCommand(
     {
       id: interaction.user.id,
       username: interaction.user.username,
-      displayName: interaction.user.globalName
-        ?? interaction.user.username,
+      displayName:
+        interaction.user.globalName ??
+        interaction.user.username,
     },
   );
 
@@ -105,16 +117,26 @@ async function handleCommand(
       );
       break;
 
+    case 'emprestimo':
+      await handleEmprestimo(
+        interaction,
+      );
+      break;
+
     case 'horas':
       await handleHoras(interaction);
       break;
 
     case 'ranking-voz':
-      await handleRankingVoz(interaction);
+      await handleRankingVoz(
+        interaction,
+      );
       break;
 
     case 'ticket-setup':
-      await handleTicketSetup(interaction);
+      await handleTicketSetup(
+        interaction,
+      );
       break;
 
     default:
@@ -138,11 +160,12 @@ async function handleCaixa(
     return;
   }
 
-  const guild = await db.guild.findUnique({
-    where: {
-      id: interaction.guild.id,
-    },
-  });
+  const guild =
+    await db.guild.findUnique({
+      where: {
+        id: interaction.guild.id,
+      },
+    });
 
   if (!guild) {
     await safeReply(
@@ -154,41 +177,44 @@ async function handleCaixa(
     return;
   }
 
-  const embed = new EmbedBuilder()
-    .setColor(0x7c5cff)
-    .setTitle('🏦 CAIXA • GHOST SYNDICATE')
-    .setDescription(
-      [
+  const embed =
+    new EmbedBuilder()
+      .setColor(0x7c5cff)
+      .setTitle(
+        '🏦 CAIXA • GHOST SYNDICATE',
+      )
+      .setDescription(
         '> Controle financeiro oficial da Ghost Syndicate.',
-        '',
-        'Todos os valores abaixo representam o estado atual registrado pelo bot.',
-      ].join('\n'),
-    )
-    .addFields(
-      {
-        name: '💰 SALDO ATUAL',
-        value: `**${money(guild.cashBalance)}**`,
-        inline: true,
-      },
-      {
-        name: '🎯 META DIÁRIA',
-        value: guild.dailyGoal > 0
-          ? `**${money(guild.dailyGoal)}**`
-          : '**Não definida**',
-        inline: true,
-      },
-      {
-        name: '🛡️ RESERVA',
-        value: guild.reserve > 0
-          ? `**${money(guild.reserve)}**`
-          : '**Não definida**',
-        inline: true,
-      },
-    )
-    .setFooter({
-      text: 'Ghost Syndicate • Organização • Lealdade • Resultado',
-    })
-    .setTimestamp();
+      )
+      .addFields(
+        {
+          name: '💰 SALDO ATUAL',
+          value:
+            `**${money(guild.cashBalance)}**`,
+          inline: true,
+        },
+        {
+          name: '🎯 META DIÁRIA',
+          value:
+            guild.dailyGoal > 0
+              ? `**${money(guild.dailyGoal)}**`
+              : '**Não definida**',
+          inline: true,
+        },
+        {
+          name: '🛡️ RESERVA',
+          value:
+            guild.reserve > 0
+              ? `**${money(guild.reserve)}**`
+              : '**Não definida**',
+          inline: true,
+        },
+      )
+      .setFooter({
+        text:
+          'Ghost Syndicate • Organização • Lealdade • Resultado',
+      })
+      .setTimestamp();
 
   await safeReply(
     interaction,
@@ -208,15 +234,19 @@ async function handleMovement(
     return;
   }
 
-  const amount = interaction.options.getInteger(
-    'valor',
-    true,
-  );
+  const amount =
+    interaction.options.getInteger(
+      'valor',
+      true,
+    );
 
-  const reason = interaction.options.getString(
-    'motivo',
-    true,
-  ).trim();
+  const reason =
+    interaction.options
+      .getString(
+        'motivo',
+        true,
+      )
+      .trim();
 
   if (amount <= 0) {
     await safeReply(
@@ -239,59 +269,66 @@ async function handleMovement(
   }
 
   try {
-    const updatedGuild = await addMovement(
-      interaction.guild.id,
-      interaction.user.id,
-      type,
-      amount,
-      reason,
-      interaction.user.tag,
-    );
+    const updatedGuild =
+      await addMovement(
+        interaction.guild.id,
+        interaction.user.id,
+        type,
+        amount,
+        reason,
+        interaction.user.tag,
+      );
 
-    const isEntrada = type === 'IN';
+    const isEntrada =
+      type === 'IN';
 
-    const embed = new EmbedBuilder()
-      .setColor(
-        isEntrada
-          ? 0x35d39a
-          : 0xf15b6b,
-      )
-      .setTitle(
-        isEntrada
-          ? '📥 ENTRADA REGISTRADA'
-          : '📤 SAÍDA REGISTRADA',
-      )
-      .setDescription(
-        isEntrada
-          ? '> Um novo valor foi adicionado ao caixa da Ghost Syndicate.'
-          : '> Um valor foi retirado do caixa da Ghost Syndicate.',
-      )
-      .addFields(
-        {
-          name: '💵 VALOR',
-          value: `**${money(amount)}**`,
-          inline: true,
-        },
-        {
-          name: '📝 MOTIVO',
-          value: reason,
-          inline: true,
-        },
-        {
-          name: '🏦 NOVO SALDO',
-          value: `**${money(updatedGuild.cashBalance)}**`,
-          inline: true,
-        },
-        {
-          name: '👤 RESPONSÁVEL',
-          value: `${interaction.user}`,
-          inline: false,
-        },
-      )
-      .setFooter({
-        text: 'Ghost Syndicate • Controle Financeiro',
-      })
-      .setTimestamp();
+    const embed =
+      new EmbedBuilder()
+        .setColor(
+          isEntrada
+            ? 0x35d39a
+            : 0xf15b6b,
+        )
+        .setTitle(
+          isEntrada
+            ? '📥 ENTRADA REGISTRADA'
+            : '📤 SAÍDA REGISTRADA',
+        )
+        .setDescription(
+          isEntrada
+            ? '> Um novo valor foi adicionado ao caixa da Ghost Syndicate.'
+            : '> Um valor foi retirado do caixa da Ghost Syndicate.',
+        )
+        .addFields(
+          {
+            name: '💵 VALOR',
+            value:
+              `**${money(amount)}**`,
+            inline: true,
+          },
+          {
+            name: '📝 MOTIVO',
+            value: reason,
+            inline: true,
+          },
+          {
+            name: '🏦 NOVO SALDO',
+            value:
+              `**${money(updatedGuild.cashBalance)}**`,
+            inline: true,
+          },
+          {
+            name: '👤 RESPONSÁVEL',
+            value:
+              `${interaction.user}`,
+            inline: false,
+          },
+        )
+        .setFooter({
+          text:
+            'Ghost Syndicate • Controle Financeiro',
+        })
+        .setTimestamp();
 
     await safeReply(
       interaction,
@@ -312,6 +349,25 @@ async function handleMovement(
 }
 
 /* =========================================================
+   EMPRÉSTIMO
+========================================================= */
+
+async function handleEmprestimo(
+  interaction: ChatInputCommandInteraction,
+): Promise<void> {
+  await safeReply(
+    interaction,
+    [
+      '💳 **SISTEMA DE EMPRÉSTIMOS**',
+      '',
+      'O comando foi registrado corretamente.',
+      'A lógica completa de empréstimos será integrada na próxima etapa do módulo financeiro.',
+    ].join('\n'),
+    true,
+  );
+}
+
+/* =========================================================
    HORAS EM CALL
 ========================================================= */
 
@@ -322,33 +378,42 @@ async function handleHoras(
     return;
   }
 
-  const seconds = await memberVoiceSeconds(
-    interaction.guild.id,
-    interaction.user.id,
-  );
+  const seconds =
+    await memberVoiceSeconds(
+      interaction.guild.id,
+      interaction.user.id,
+    );
 
-  const embed = new EmbedBuilder()
-    .setColor(0x8b5cf6)
-    .setTitle('🎙️ SUAS HORAS EM CALL')
-    .setDescription(
-      [
-        `> **${interaction.user.displayName}**`,
-        '',
-        'Seu tempo registrado em canais de voz:',
-        '',
-        `# ${duration(seconds)}`,
-      ].join('\n'),
-    )
-    .setFooter({
-      text: 'Ghost Syndicate • Voice Tracker',
-    })
-    .setTimestamp();
+  const embed =
+    new EmbedBuilder()
+      .setColor(0x8b5cf6)
+      .setTitle(
+        '🎙️ SUAS HORAS EM CALL',
+      )
+      .setDescription(
+        [
+          `> **${interaction.user.displayName}**`,
+          '',
+          'Seu tempo registrado em canais de voz:',
+          '',
+          `# ${duration(seconds)}`,
+        ].join('\n'),
+      )
+      .setFooter({
+        text:
+          'Ghost Syndicate • Voice Tracker',
+      })
+      .setTimestamp();
 
   await safeReply(
     interaction,
     embed,
   );
 }
+
+/* =========================================================
+   RANKING DE VOZ
+========================================================= */
 
 async function handleRankingVoz(
   interaction: ChatInputCommandInteraction,
@@ -357,18 +422,23 @@ async function handleRankingVoz(
     return;
   }
 
-  const ranking = await topVoice(
-    interaction.guild.id,
-    10,
-  );
+  const ranking =
+    await topVoice(
+      interaction.guild.id,
+      10,
+    );
 
-  const embed = new EmbedBuilder()
-    .setColor(0x8b5cf6)
-    .setTitle('🎙️ RANKING DE HORAS EM CALL')
-    .setFooter({
-      text: 'Ghost Syndicate • Voice Tracker',
-    })
-    .setTimestamp();
+  const embed =
+    new EmbedBuilder()
+      .setColor(0x8b5cf6)
+      .setTitle(
+        '🎙️ RANKING DE HORAS EM CALL',
+      )
+      .setFooter({
+        text:
+          'Ghost Syndicate • Voice Tracker',
+      })
+      .setTimestamp();
 
   if (ranking.length === 0) {
     embed.setDescription(
@@ -389,15 +459,21 @@ async function handleRankingVoz(
     '🥉',
   ];
 
-  const description = ranking
-    .map((member, index) => {
-      const prefix =
-        medals[index]
-        ?? `**${index + 1}.**`;
+  const description =
+    ranking
+      .map(
+        (member, index) => {
+          const prefix =
+            medals[index] ??
+            `**${index + 1}.**`;
 
-      return `${prefix} **${member.name}** — \`${duration(member.seconds)}\``;
-    })
-    .join('\n');
+          return (
+            `${prefix} **${member.name}** — ` +
+            `\`${duration(member.seconds)}\``
+          );
+        },
+      )
+      .join('\n');
 
   embed.setDescription(
     [
@@ -420,34 +496,44 @@ async function handleRankingVoz(
 async function handleTicketSetup(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  const embed = new EmbedBuilder()
-    .setColor(0x7c5cff)
-    .setTitle('🎫 CENTRAL DE ATENDIMENTO')
-    .setDescription(
-      [
-        '> Precisa de ajuda?',
-        '',
-        'Abra um ticket privado com a equipe da **Ghost Syndicate**.',
-        '',
-        '🔒 Atendimento privado',
-        '📋 Organização',
-        '📜 Transcript automático',
-        '⚡ Atendimento pela equipe',
-      ].join('\n'),
-    )
-    .setFooter({
-      text: 'Ghost Syndicate • Central de Atendimento',
-    })
-    .setTimestamp();
+  const embed =
+    new EmbedBuilder()
+      .setColor(0x7c5cff)
+      .setTitle(
+        '🎫 CENTRAL DE ATENDIMENTO',
+      )
+      .setDescription(
+        [
+          '> Precisa de ajuda?',
+          '',
+          'Abra um ticket privado com a equipe da **Ghost Syndicate**.',
+          '',
+          '🔒 Atendimento privado',
+          '📋 Organização',
+          '📜 Transcript automático',
+          '⚡ Atendimento pela equipe',
+        ].join('\n'),
+      )
+      .setFooter({
+        text:
+          'Ghost Syndicate • Central de Atendimento',
+      })
+      .setTimestamp();
 
   const row =
     new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId('ticket:create')
-          .setLabel('Abrir Ticket')
+          .setCustomId(
+            'ticket:create',
+          )
+          .setLabel(
+            'Abrir Ticket',
+          )
           .setEmoji('🎫')
-          .setStyle(ButtonStyle.Primary),
+          .setStyle(
+            ButtonStyle.Primary,
+          ),
       );
 
   await interaction.reply({
@@ -463,13 +549,19 @@ async function handleTicketSetup(
 async function handleButton(
   interaction: ButtonInteraction,
 ): Promise<void> {
-  switch (interaction.customId) {
+  switch (
+    interaction.customId
+  ) {
     case 'ticket:create':
-      await createTicket(interaction);
+      await createTicket(
+        interaction,
+      );
       break;
 
     case 'ticket:close':
-      await closeTicket(interaction);
+      await closeTicket(
+        interaction,
+      );
       break;
 
     default:
@@ -489,7 +581,8 @@ async function handleButton(
 async function createTicket(
   interaction: ButtonInteraction,
 ): Promise<void> {
-  const guild = interaction.guild;
+  const guild =
+    interaction.guild;
 
   if (!guild) {
     await safeReply(
@@ -501,19 +594,28 @@ async function createTicket(
     return;
   }
 
-  const safeUsername = interaction.user.username
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '')
-    .slice(0, 18);
+  const safeUsername =
+    interaction.user.username
+      .toLowerCase()
+      .replace(
+        /[^a-z0-9-]/g,
+        '',
+      )
+      .slice(0, 18);
 
   const channelName =
-    `ticket-${safeUsername || interaction.user.id.slice(-6)}`;
+    `ticket-${
+      safeUsername ||
+      interaction.user.id.slice(-6)
+    }`;
 
   const existingChannel =
     guild.channels.cache.find(
       (channel) =>
-        channel.type === ChannelType.GuildText
-        && channel.name === channelName,
+        channel.type ===
+          ChannelType.GuildText &&
+        channel.name ===
+          channelName,
     );
 
   if (existingChannel) {
@@ -526,28 +628,38 @@ async function createTicket(
     return;
   }
 
-  const permissionOverwrites = [
-    {
-      id: guild.roles.everyone.id,
-      deny: [
-        PermissionFlagsBits.ViewChannel,
-      ],
-    },
-    {
-      id: interaction.user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles,
-        PermissionFlagsBits.EmbedLinks,
-      ],
-    },
-  ];
+  const permissionOverwrites =
+    [
+      {
+        id:
+          guild.roles.everyone.id,
+        deny: [
+          PermissionFlagsBits.ViewChannel,
+        ],
+      },
+      {
+        id:
+          interaction.user.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.AttachFiles,
+          PermissionFlagsBits.EmbedLinks,
+        ],
+      },
+    ];
 
-  if (config.ROLE_LEADERSHIP_ID) {
+  /*
+   * 👑 LIDERANÇA
+   */
+
+  if (
+    config.roles.leadershipId
+  ) {
     permissionOverwrites.push({
-      id: config.ROLE_LEADERSHIP_ID,
+      id:
+        config.roles.leadershipId,
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
@@ -558,9 +670,16 @@ async function createTicket(
     });
   }
 
-  if (config.ROLE_FINANCE_ID) {
+  /*
+   * 💰 FINANCEIRO
+   */
+
+  if (
+    config.roles.financeId
+  ) {
     permissionOverwrites.push({
-      id: config.ROLE_FINANCE_ID,
+      id:
+        config.roles.financeId,
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
@@ -571,9 +690,16 @@ async function createTicket(
     });
   }
 
-  if (config.ROLE_OPERATIONS_ID) {
+  /*
+   * 🎯 OPERAÇÕES
+   */
+
+  if (
+    config.roles.operationsId
+  ) {
     permissionOverwrites.push({
-      id: config.ROLE_OPERATIONS_ID,
+      id:
+        config.roles.operationsId,
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
@@ -584,57 +710,84 @@ async function createTicket(
     });
   }
 
-  const channel = await guild.channels.create({
-    name: channelName,
-    type: ChannelType.GuildText,
-    parent:
-      config.CATEGORY_TICKETS_ID || undefined,
-    permissionOverwrites,
-  });
+  const channel =
+    await guild.channels.create(
+      {
+        name: channelName,
+        type:
+          ChannelType.GuildText,
+        parent:
+          config.tickets
+            .categoryId ||
+          undefined,
+        permissionOverwrites,
+      },
+    );
 
-  const ticketEmbed = new EmbedBuilder()
-    .setColor(0x7c5cff)
-    .setTitle('🎫 TICKET ABERTO')
-    .setDescription(
-      [
-        `Olá ${interaction.user}, seu atendimento foi criado.`,
-        '',
-        '📝 Explique detalhadamente o que você precisa.',
-        '👥 Nossa equipe irá assumir o atendimento.',
-        '📜 Ao finalizar, um transcript será gerado automaticamente.',
-      ].join('\n'),
-    )
-    .addFields({
-      name: '👤 ABERTO POR',
-      value: `${interaction.user}`,
-      inline: true,
-    })
-    .addFields({
-      name: '🕐 ABERTO EM',
-      value: `<t:${Math.floor(Date.now() / 1000)}:F>`,
-      inline: true,
-    })
-    .setFooter({
-      text: 'Ghost Syndicate • Atendimento',
-    })
-    .setTimestamp();
+  const ticketEmbed =
+    new EmbedBuilder()
+      .setColor(0x7c5cff)
+      .setTitle(
+        '🎫 TICKET ABERTO',
+      )
+      .setDescription(
+        [
+          `Olá ${interaction.user}, seu atendimento foi criado.`,
+          '',
+          '📝 Explique detalhadamente o que você precisa.',
+          '👥 Nossa equipe irá assumir o atendimento.',
+          '📜 Ao finalizar, um transcript será gerado automaticamente.',
+        ].join('\n'),
+      )
+      .addFields(
+        {
+          name: '👤 ABERTO POR',
+          value:
+            `${interaction.user}`,
+          inline: true,
+        },
+        {
+          name: '🕐 ABERTO EM',
+          value:
+            `<t:${Math.floor(
+              Date.now() / 1000,
+            )}:F>`,
+          inline: true,
+        },
+      )
+      .setFooter({
+        text:
+          'Ghost Syndicate • Atendimento',
+      })
+      .setTimestamp();
 
   const closeRow =
     new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId('ticket:close')
-          .setLabel('Fechar Ticket')
+          .setCustomId(
+            'ticket:close',
+          )
+          .setLabel(
+            'Fechar Ticket',
+          )
           .setEmoji('🔒')
-          .setStyle(ButtonStyle.Danger),
+          .setStyle(
+            ButtonStyle.Danger,
+          ),
       );
 
   await (
     channel as TextChannel
   ).send({
-    content: `<@${interaction.user.id}>`,
-    embeds: [ticketEmbed],
-    components: [closeRow],
+    content:
+      `<@${interaction.user.id}>`,
+    embeds: [
+      ticketEmbed,
+    ],
+    components: [
+      closeRow,
+    ],
   });
 
   await safeReply(
@@ -651,9 +804,14 @@ async function createTicket(
 async function closeTicket(
   interaction: ButtonInteraction,
 ): Promise<void> {
-  const channel = interaction.channel;
+  const channel =
+    interaction.channel;
 
-  if (!channel || channel.type !== ChannelType.GuildText) {
+  if (
+    !channel ||
+    channel.type !==
+      ChannelType.GuildText
+  ) {
     await safeReply(
       interaction,
       '❌ Este botão precisa estar em um canal de texto.',
@@ -688,36 +846,44 @@ async function closeTicket(
         '📜 O transcript foi gerado e enviado ao canal configurado.',
     });
 
-    setTimeout(() => {
-      textChannel
-        .delete(
-          'Ticket encerrado e transcript gerado',
-        )
-        .catch((error) => {
-          console.error(
-            '[TICKET DELETE]',
-            error,
+    setTimeout(
+      () => {
+        textChannel
+          .delete(
+            'Ticket encerrado e transcript gerado',
+          )
+          .catch(
+            (error) => {
+              console.error(
+                '❌ [TICKET DELETE]',
+                error,
+              );
+            },
           );
-        });
-    }, 2500);
+      },
+      2500,
+    );
   } catch (error) {
     console.error(
-      '[TRANSCRIPT ERROR]',
+      '❌ [TRANSCRIPT ERROR]',
       error,
     );
 
     await interaction.editReply({
       content:
-        '⚠️ O ticket será fechado, mas ocorreu um erro ao gerar o transcript. Verifique o console do bot.',
+        '⚠️ O ticket será fechado, mas ocorreu um erro ao gerar o transcript.',
     });
 
-    setTimeout(() => {
-      textChannel
-        .delete(
-          'Ticket encerrado após erro no transcript',
-        )
-        .catch(() => {});
-    }, 2500);
+    setTimeout(
+      () => {
+        textChannel
+          .delete(
+            'Ticket encerrado após erro no transcript',
+          )
+          .catch(() => {});
+      },
+      2500,
+    );
   }
 }
 
@@ -734,28 +900,78 @@ async function safeReply(
     | EmbedBuilder,
   ephemeral = false,
 ): Promise<void> {
-  const payload =
-    typeof content === 'string'
-      ? {
+  if (
+    typeof content ===
+    'string'
+  ) {
+    if (
+      interaction.replied
+    ) {
+      await interaction.followUp(
+        {
           content,
           ephemeral,
-        }
-      : {
-          embeds: [content],
-          ephemeral,
-        };
+        },
+      );
 
-  if (interaction.replied) {
-    await interaction.followUp(payload);
+      return;
+    }
+
+    if (
+      interaction.deferred
+    ) {
+      await interaction.editReply(
+        {
+          content,
+        },
+      );
+
+      return;
+    }
+
+    await interaction.reply({
+      content,
+      ephemeral,
+    });
+
     return;
   }
 
-  if (interaction.deferred) {
-    await interaction.editReply(payload);
+  if (
+    interaction.replied
+  ) {
+    await interaction.followUp(
+      {
+        embeds: [
+          content,
+        ],
+        ephemeral,
+      },
+    );
+
     return;
   }
 
-  await interaction.reply(payload);
+  if (
+    interaction.deferred
+  ) {
+    await interaction.editReply(
+      {
+        embeds: [
+          content,
+        ],
+      },
+    );
+
+    return;
+  }
+
+  await interaction.reply({
+    embeds: [
+      content,
+    ],
+    ephemeral,
+  });
 }
 
 /* =========================================================
@@ -766,39 +982,51 @@ async function sendError(
   interaction: Interaction,
 ): Promise<void> {
   const message =
-    '❌ Ocorreu um erro ao processar esta ação. Verifique o console do bot.';
+    '❌ Ocorreu um erro ao processar esta ação.';
 
   try {
     if (
-      interaction.isChatInputCommand()
-      || interaction.isButton()
+      !interaction.isChatInputCommand() &&
+      !interaction.isButton()
     ) {
-      if (interaction.replied) {
-        await interaction.followUp({
+      return;
+    }
+
+    if (
+      interaction.replied
+    ) {
+      await interaction.followUp(
+        {
           content: message,
           ephemeral: true,
-        });
+        },
+      );
 
-        return;
-      }
+      return;
+    }
 
-      if (interaction.deferred) {
-        await interaction.editReply({
+    if (
+      interaction.deferred
+    ) {
+      await interaction.editReply(
+        {
           content: message,
-        });
+        },
+      );
 
-        return;
-      }
+      return;
+    }
 
-      await interaction.reply({
+    await interaction.reply(
+      {
         content: message,
         ephemeral: true,
-      });
-    }
-  } catch (replyError) {
+      },
+    );
+  } catch (error) {
     console.error(
-      '[ERROR REPLY]',
-      replyError,
+      '❌ [ERROR REPLY]',
+      error,
     );
   }
 }

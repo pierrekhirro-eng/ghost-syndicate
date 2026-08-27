@@ -11,6 +11,10 @@ import {
   printConfig,
 } from './utils/config.js';
 
+import {
+  registerCommands,
+} from './commands/register.js';
+
 /* =========================================================
    CLIENT DISCORD
 ========================================================= */
@@ -36,50 +40,90 @@ const client = new Client({
    READY
 ========================================================= */
 
-client.once('ready', (readyClient) => {
-  console.log('');
-  console.log(
-    '👻 ========================================',
-  );
-  console.log(
-    '👻       GHOST SYNDICATE BOT',
-  );
-  console.log(
-    '👻 ========================================',
-  );
-  console.log('');
+client.once(
+  'ready',
+  async (readyClient) => {
+    console.log('');
+    console.log(
+      '👻 ========================================',
+    );
+    console.log(
+      '👻       GHOST SYNDICATE BOT',
+    );
+    console.log(
+      '👻 ========================================',
+    );
+    console.log('');
 
-  console.log(
-    `✅ Conectado como: ${readyClient.user.tag}`,
-  );
+    console.log(
+      `✅ Conectado como: ${readyClient.user.tag}`,
+    );
 
-  console.log(
-    `🌐 Servidores: ${readyClient.guilds.cache.size}`,
-  );
+    console.log(
+      `🌐 Servidores: ${readyClient.guilds.cache.size}`,
+    );
 
-  console.log(
-    `🆔 Client ID: ${readyClient.user.id}`,
-  );
+    console.log(
+      `🆔 Client ID: ${readyClient.user.id}`,
+    );
 
-  printConfig();
+    console.log('');
 
-  console.log(
-    '🚀 Ghost Syndicate iniciado com sucesso.',
-  );
+    printConfig();
 
-  console.log('');
-});
+    try {
+      await registerCommands();
+
+      console.log(
+        '✅ Slash commands sincronizados.',
+      );
+    } catch (error) {
+      console.error('');
+      console.error(
+        '❌ Falha ao sincronizar os slash commands.',
+      );
+      console.error('');
+      console.error(error);
+      console.error('');
+    }
+
+    console.log(
+      '🚀 Ghost Syndicate iniciado com sucesso.',
+    );
+
+    console.log('');
+  },
+);
 
 /* =========================================================
-   ERRO DO CLIENTE
+   ERROS DO CLIENTE DISCORD
 ========================================================= */
 
-client.on('error', (error) => {
-  console.error(
-    '❌ Erro no cliente Discord:',
-    error,
-  );
-});
+client.on(
+  'error',
+  (error) => {
+    console.error('');
+    console.error(
+      '❌ Erro no cliente Discord:',
+    );
+    console.error(error);
+    console.error('');
+  },
+);
+
+/* =========================================================
+   AVISOS DO DISCORD.JS
+========================================================= */
+
+client.on(
+  'warn',
+  (message) => {
+    console.warn(
+      '⚠️ Discord.js:',
+      message,
+    );
+  },
+);
 
 /* =========================================================
    PROMISES NÃO TRATADAS
@@ -88,10 +132,12 @@ client.on('error', (error) => {
 process.on(
   'unhandledRejection',
   (error) => {
+    console.error('');
     console.error(
       '❌ Unhandled Rejection:',
-      error,
     );
+    console.error(error);
+    console.error('');
   },
 );
 
@@ -102,10 +148,12 @@ process.on(
 process.on(
   'uncaughtException',
   (error) => {
+    console.error('');
     console.error(
       '❌ Uncaught Exception:',
-      error,
     );
+    console.error(error);
+    console.error('');
 
     process.exit(1);
   },
@@ -127,14 +175,27 @@ async function shutdown(
     '👻 Encerrando Ghost Syndicate...',
   );
 
-  client.destroy();
+  try {
+    if (client.isReady()) {
+      client.destroy();
+    }
 
-  console.log(
-    '✅ Bot encerrado com segurança.',
-  );
+    console.log(
+      '✅ Bot encerrado com segurança.',
+    );
+  } catch (error) {
+    console.error(
+      '❌ Erro ao encerrar o bot:',
+      error,
+    );
+  }
 
   process.exit(0);
 }
+
+/* =========================================================
+   SIGNALS
+========================================================= */
 
 process.on(
   'SIGINT',
@@ -154,18 +215,22 @@ process.on(
    LOGIN
 ========================================================= */
 
+console.log('');
 console.log(
   '🔄 Conectando ao Discord...',
 );
+console.log('');
 
 client
   .login(config.discord.token)
   .catch((error) => {
+    console.error('');
     console.error(
       '❌ Não foi possível conectar ao Discord.',
     );
-
+    console.error('');
     console.error(error);
+    console.error('');
 
     process.exit(1);
   });

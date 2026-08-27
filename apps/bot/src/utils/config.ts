@@ -5,25 +5,36 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 /* =========================================================
-   SCHEMA DE CONFIGURAÇÃO
+   ENV SCHEMA
 ========================================================= */
 
 const envSchema = z.object({
   DISCORD_TOKEN: z
     .string()
-    .min(1, 'DISCORD_TOKEN é obrigatório.'),
+    .min(
+      1,
+      'DISCORD_TOKEN é obrigatório.',
+    ),
 
   DISCORD_CLIENT_ID: z
     .string()
-    .min(1, 'DISCORD_CLIENT_ID é obrigatório.'),
+    .min(
+      1,
+      'DISCORD_CLIENT_ID é obrigatório.',
+    ),
 
   DISCORD_GUILD_ID: z
     .string()
-    .min(1, 'DISCORD_GUILD_ID é obrigatório.'),
+    .min(
+      1,
+      'DISCORD_GUILD_ID é obrigatório.',
+    ),
 
   DATABASE_URL: z
     .string()
-    .default('file:./dev.db'),
+    .default(
+      'file:./dev.db',
+    ),
 
   WEB_PORT: z
     .coerce
@@ -37,7 +48,7 @@ const envSchema = z.object({
     .optional()
     .default(''),
 
-  CHANNEL_TRANSCRIPTS_ID: z
+  TRANSCRIPT_CHANNEL_ID: z
     .string()
     .optional()
     .default(''),
@@ -59,20 +70,18 @@ const envSchema = z.object({
 });
 
 /* =========================================================
-   VALIDAÇÃO
+   VALIDATION
 ========================================================= */
 
 const parsedEnv =
-  envSchema.safeParse(process.env);
+  envSchema.safeParse(
+    process.env,
+  );
 
 if (!parsedEnv.success) {
   console.error('');
   console.error(
     '❌ ERRO NA CONFIGURAÇÃO DO GHOST SYNDICATE',
-  );
-  console.error('');
-  console.error(
-    'As seguintes variáveis precisam ser verificadas:',
   );
   console.error('');
 
@@ -84,7 +93,7 @@ if (!parsedEnv.success) {
 
   console.error('');
   console.error(
-    '💡 Verifique o arquivo .env antes de iniciar o bot.',
+    '💡 Verifique o arquivo .env.',
   );
   console.error('');
 
@@ -92,56 +101,102 @@ if (!parsedEnv.success) {
 }
 
 /* =========================================================
-   CONFIGURAÇÃO FINAL
+   VALUES
+========================================================= */
+
+const env =
+  parsedEnv.data;
+
+/* =========================================================
+   CONFIG
 ========================================================= */
 
 export const config = {
+  /*
+   * Discord
+   */
+
   discord: {
-    token: parsedEnv.data.DISCORD_TOKEN,
+    token:
+      env.DISCORD_TOKEN,
 
     clientId:
-      parsedEnv.data.DISCORD_CLIENT_ID,
+      env.DISCORD_CLIENT_ID,
 
     guildId:
-      parsedEnv.data.DISCORD_GUILD_ID,
+      env.DISCORD_GUILD_ID,
   },
+
+  /*
+   * Database
+   */
 
   database: {
     url:
-      parsedEnv.data.DATABASE_URL,
+      env.DATABASE_URL,
   },
+
+  /*
+   * Web
+   */
 
   web: {
     port:
-      parsedEnv.data.WEB_PORT,
+      env.WEB_PORT,
   },
+
+  /*
+   * Tickets
+   */
 
   tickets: {
     categoryId:
-      parsedEnv.data.CATEGORY_TICKETS_ID,
+      env.CATEGORY_TICKETS_ID,
 
     transcriptsChannelId:
-      parsedEnv.data
-        .CHANNEL_TRANSCRIPTS_ID,
+      env.TRANSCRIPT_CHANNEL_ID,
   },
+
+  /*
+   * Roles
+   */
 
   roles: {
     leadershipId:
-      parsedEnv.data
-        .ROLE_LEADERSHIP_ID,
+      env.ROLE_LEADERSHIP_ID,
 
     financeId:
-      parsedEnv.data
-        .ROLE_FINANCE_ID,
+      env.ROLE_FINANCE_ID,
 
     operationsId:
-      parsedEnv.data
-        .ROLE_OPERATIONS_ID,
+      env.ROLE_OPERATIONS_ID,
   },
+
+  /*
+   * Compatibilidade com o código antigo.
+   *
+   * Esses campos serão removidos depois
+   * que terminarmos a migração dos serviços.
+   */
+
+  ROLE_LEADERSHIP_ID:
+    env.ROLE_LEADERSHIP_ID,
+
+  ROLE_FINANCE_ID:
+    env.ROLE_FINANCE_ID,
+
+  ROLE_OPERATIONS_ID:
+    env.ROLE_OPERATIONS_ID,
+
+  CATEGORY_TICKETS_ID:
+    env.CATEGORY_TICKETS_ID,
+
+  TRANSCRIPT_CHANNEL_ID:
+    env.TRANSCRIPT_CHANNEL_ID,
 } as const;
 
 /* =========================================================
-   LOG DE CONFIGURAÇÃO
+   PRINT CONFIG
 ========================================================= */
 
 export function printConfig(): void {
@@ -171,13 +226,15 @@ export function printConfig(): void {
 
   console.log(
     `🎫 Categoria de Tickets: ${
-      config.tickets.categoryId || 'não definida'
+      config.tickets.categoryId ||
+      'não definida'
     }`,
   );
 
   console.log(
     `📜 Canal de Transcripts: ${
-      config.tickets.transcriptsChannelId ||
+      config.tickets
+        .transcriptsChannelId ||
       'não definido'
     }`,
   );
@@ -206,5 +263,6 @@ export function printConfig(): void {
   console.log(
     '────────────────────────────────',
   );
+
   console.log('');
 }
