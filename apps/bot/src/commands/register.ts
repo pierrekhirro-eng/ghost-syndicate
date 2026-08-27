@@ -6,7 +6,13 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 
-import { config } from '../utils/config.js';
+import {
+  config,
+} from '../utils/config.js';
+
+import {
+  adminCommand,
+} from './admin.js';
 
 /* =========================================================
    COMANDOS
@@ -135,6 +141,8 @@ const commands = [
     .setDescription(
       'Envia a central de tickets.',
     ),
+
+  adminCommand,
 ];
 
 /* =========================================================
@@ -159,6 +167,24 @@ export async function registerCommands(): Promise<void> {
       commands.map((command) =>
         command.toJSON(),
       );
+
+    console.log(
+      `📦 Total de comandos: ${commandData.length}`,
+    );
+
+    console.log(
+      '📝 Comandos:',
+    );
+
+    for (
+      const command of commandData
+    ) {
+      console.log(
+        `   /${command.name}`,
+      );
+    }
+
+    console.log('');
 
     await rest.put(
       Routes.applicationGuildCommands(

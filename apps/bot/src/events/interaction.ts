@@ -38,6 +38,10 @@ import {
   config,
 } from '../utils/config.js';
 
+import {
+  executeAdminCommand,
+} from '../commands/admin.js';
+
 /* =========================================================
    INTERACTION PRINCIPAL
 ========================================================= */
@@ -135,6 +139,12 @@ async function handleCommand(
 
     case 'ticket-setup':
       await handleTicketSetup(
+        interaction,
+      );
+      break;
+
+    case 'admin':
+      await executeAdminCommand(
         interaction,
       );
       break;
