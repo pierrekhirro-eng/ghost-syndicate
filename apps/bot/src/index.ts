@@ -15,6 +15,10 @@ import {
   registerCommands,
 } from './commands/register.js';
 
+import {
+  onInteraction,
+} from './events/interaction.js';
+
 /* =========================================================
    CLIENT DISCORD
 ========================================================= */
@@ -35,6 +39,26 @@ const client = new Client({
     Partials.User,
   ],
 });
+
+/* =========================================================
+   INTERAÇÕES
+========================================================= */
+
+client.on(
+  'interactionCreate',
+  async (interaction) => {
+    try {
+      await onInteraction(
+        interaction,
+      );
+    } catch (error) {
+      console.error(
+        '❌ Erro ao processar interação:',
+        error,
+      );
+    }
+  },
+);
 
 /* =========================================================
    READY
@@ -96,7 +120,7 @@ client.once(
 );
 
 /* =========================================================
-   ERROS DO CLIENTE DISCORD
+   ERRO DO CLIENTE
 ========================================================= */
 
 client.on(
@@ -122,6 +146,25 @@ client.on(
       '⚠️ Discord.js:',
       message,
     );
+  },
+);
+
+/* =========================================================
+   DEBUG DE INTERAÇÕES
+========================================================= */
+
+client.on(
+  'debug',
+  (message) => {
+    if (
+      process.env.NODE_ENV ===
+      'development'
+    ) {
+      console.debug(
+        '🔎 Discord.js:',
+        message,
+      );
+    }
   },
 );
 
@@ -222,7 +265,9 @@ console.log(
 console.log('');
 
 client
-  .login(config.discord.token)
+  .login(
+    config.discord.token,
+  )
   .catch((error) => {
     console.error('');
     console.error(
