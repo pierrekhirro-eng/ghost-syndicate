@@ -6,10 +6,21 @@ import {
   Partials,
 } from 'discord.js';
 
-import {
-  config,
-  printConfig,
-} from './utils/config.js';
+import 'dotenv/config';
+
+/* =========================================================
+   CONFIGURAÇÃO BÁSICA
+========================================================= */
+
+const token = process.env.DISCORD_TOKEN;
+
+if (!token) {
+  console.error(
+    '❌ DISCORD_TOKEN não foi encontrado no arquivo .env.',
+  );
+
+  process.exit(1);
+}
 
 /* =========================================================
    CLIENT DISCORD
@@ -33,45 +44,31 @@ const client = new Client({
 });
 
 /* =========================================================
-   READY
+   EVENTO READY
 ========================================================= */
 
 client.once('ready', (readyClient) => {
   console.log('');
-  console.log(
-    '👻 ========================================',
-  );
-  console.log(
-    '👻       GHOST SYNDICATE BOT',
-  );
-  console.log(
-    '👻 ========================================',
-  );
+  console.log('👻 ========================================');
+  console.log('👻       GHOST SYNDICATE BOT');
+  console.log('👻 ========================================');
   console.log('');
-
   console.log(
-    `✅ Conectado como: ${readyClient.user.tag}`,
+    `✅ Bot conectado como ${readyClient.user.tag}`,
   );
-
   console.log(
     `🌐 Servidores: ${readyClient.guilds.cache.size}`,
   );
-
   console.log(
-    `🆔 Client ID: ${readyClient.user.id}`,
+    `🆔 ID: ${readyClient.user.id}`,
   );
-
-  printConfig();
-
-  console.log(
-    '🚀 Ghost Syndicate iniciado com sucesso.',
-  );
-
+  console.log('');
+  console.log('🚀 Sistema iniciado com sucesso.');
   console.log('');
 });
 
 /* =========================================================
-   ERRO DO CLIENTE
+   ERROS
 ========================================================= */
 
 client.on('error', (error) => {
@@ -81,35 +78,19 @@ client.on('error', (error) => {
   );
 });
 
-/* =========================================================
-   PROMISES NÃO TRATADAS
-========================================================= */
+process.on('unhandledRejection', (error) => {
+  console.error(
+    '❌ Unhandled Rejection:',
+    error,
+  );
+});
 
-process.on(
-  'unhandledRejection',
-  (error) => {
-    console.error(
-      '❌ Unhandled Rejection:',
-      error,
-    );
-  },
-);
-
-/* =========================================================
-   EXCEÇÕES NÃO TRATADAS
-========================================================= */
-
-process.on(
-  'uncaughtException',
-  (error) => {
-    console.error(
-      '❌ Uncaught Exception:',
-      error,
-    );
-
-    process.exit(1);
-  },
-);
+process.on('uncaughtException', (error) => {
+  console.error(
+    '❌ Uncaught Exception:',
+    error,
+  );
+});
 
 /* =========================================================
    ENCERRAMENTO SEGURO
@@ -120,11 +101,7 @@ async function shutdown(
 ): Promise<void> {
   console.log('');
   console.log(
-    `🛑 ${signal} recebido.`,
-  );
-
-  console.log(
-    '👻 Encerrando Ghost Syndicate...',
+    `🛑 Recebido ${signal}. Encerrando Ghost Syndicate...`,
   );
 
   client.destroy();
@@ -154,18 +131,13 @@ process.on(
    LOGIN
 ========================================================= */
 
-console.log(
-  '🔄 Conectando ao Discord...',
-);
-
 client
-  .login(config.discord.token)
+  .login(token)
   .catch((error) => {
     console.error(
       '❌ Não foi possível conectar ao Discord.',
+      error,
     );
-
-    console.error(error);
 
     process.exit(1);
   });
