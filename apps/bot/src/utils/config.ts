@@ -1,11 +1,25 @@
 // apps/bot/src/utils/config.ts
 
 import 'dotenv/config';
-
 import { z } from 'zod';
 
 /* =========================================================
-   ENV SCHEMA
+   GHOST SYNDICATE — IDS FIXOS DO SERVIDOR
+========================================================= */
+
+const GHOST_SYNDICATE = {
+  guildId: '1542337446191308803',
+
+  roles: {
+    owner: '1542164978251997194',
+    recruits: '1542282675983745124',
+    admin: '1542284384374366239',
+    bot: '1542337446191308803',
+  },
+} as const;
+
+/* =========================================================
+   VARIÁVEIS DE AMBIENTE
 ========================================================= */
 
 const envSchema = z.object({
@@ -21,13 +35,6 @@ const envSchema = z.object({
     .min(
       1,
       'DISCORD_CLIENT_ID é obrigatório.',
-    ),
-
-  DISCORD_GUILD_ID: z
-    .string()
-    .min(
-      1,
-      'DISCORD_GUILD_ID é obrigatório.',
     ),
 
   DATABASE_URL: z
@@ -56,21 +63,27 @@ const envSchema = z.object({
   ROLE_LEADERSHIP_ID: z
     .string()
     .optional()
-    .default(''),
+    .default(
+      GHOST_SYNDICATE.roles.admin,
+    ),
 
   ROLE_FINANCE_ID: z
     .string()
     .optional()
-    .default(''),
+    .default(
+      GHOST_SYNDICATE.roles.admin,
+    ),
 
   ROLE_OPERATIONS_ID: z
     .string()
     .optional()
-    .default(''),
+    .default(
+      GHOST_SYNDICATE.roles.admin,
+    ),
 });
 
 /* =========================================================
-   VALIDATION
+   VALIDAR ENV
 ========================================================= */
 
 const parsedEnv =
@@ -85,7 +98,10 @@ if (!parsedEnv.success) {
   );
   console.error('');
 
-  for (const issue of parsedEnv.error.issues) {
+  for (
+    const issue of
+      parsedEnv.error.issues
+  ) {
     console.error(
       `❌ ${issue.path.join('.')}: ${issue.message}`,
     );
@@ -100,21 +116,17 @@ if (!parsedEnv.success) {
   process.exit(1);
 }
 
-/* =========================================================
-   VALUES
-========================================================= */
-
 const env =
   parsedEnv.data;
 
 /* =========================================================
-   CONFIG
+   CONFIGURAÇÃO PRINCIPAL
 ========================================================= */
 
 export const config = {
-  /*
-   * Discord
-   */
+  /* -------------------------------------------------------
+     DISCORD
+  ------------------------------------------------------- */
 
   discord: {
     token:
@@ -124,30 +136,30 @@ export const config = {
       env.DISCORD_CLIENT_ID,
 
     guildId:
-      env.DISCORD_GUILD_ID,
+      GHOST_SYNDICATE.guildId,
   },
 
-  /*
-   * Database
-   */
+  /* -------------------------------------------------------
+     BANCO DE DADOS
+  ------------------------------------------------------- */
 
   database: {
     url:
       env.DATABASE_URL,
   },
 
-  /*
-   * Web
-   */
+  /* -------------------------------------------------------
+     WEB
+  ------------------------------------------------------- */
 
   web: {
     port:
       env.WEB_PORT,
   },
 
-  /*
-   * Tickets
-   */
+  /* -------------------------------------------------------
+     TICKETS
+  ------------------------------------------------------- */
 
   tickets: {
     categoryId:
@@ -157,11 +169,17 @@ export const config = {
       env.TRANSCRIPT_CHANNEL_ID,
   },
 
-  /*
-   * Roles
-   */
+  /* -------------------------------------------------------
+     CARGOS
+  ------------------------------------------------------- */
 
   roles: {
+    ownerId:
+      GHOST_SYNDICATE.roles.owner,
+
+    recruitsId:
+      GHOST_SYNDICATE.roles.recruits,
+
     leadershipId:
       env.ROLE_LEADERSHIP_ID,
 
@@ -170,14 +188,29 @@ export const config = {
 
     operationsId:
       env.ROLE_OPERATIONS_ID,
+
+    botId:
+      GHOST_SYNDICATE.roles.bot,
   },
 
-  /*
-   * Compatibilidade com o código antigo.
-   *
-   * Esses campos serão removidos depois
-   * que terminarmos a migração dos serviços.
-   */
+  /* -------------------------------------------------------
+     SERVIDOR
+  ------------------------------------------------------- */
+
+  guild: {
+    id:
+      GHOST_SYNDICATE.guildId,
+
+    name:
+      'Ghost Syndicate',
+  },
+
+  /* -------------------------------------------------------
+     COMPATIBILIDADE TEMPORÁRIA
+     
+     Mantemos esses campos enquanto migramos
+     os arquivos antigos para config.roles.*
+  ------------------------------------------------------- */
 
   ROLE_LEADERSHIP_ID:
     env.ROLE_LEADERSHIP_ID,
@@ -196,7 +229,47 @@ export const config = {
 } as const;
 
 /* =========================================================
-   PRINT CONFIG
+   HELPERS DE CARGOS
+========================================================= */
+
+export function isOwnerRole(
+  roleId: string,
+): boolean {
+  return (
+    roleId ===
+    config.roles.ownerId
+  );
+}
+
+export function isAdminRole(
+  roleId: string,
+): boolean {
+  return (
+    roleId ===
+    config.roles.leadershipId
+  );
+}
+
+export function isRecruitRole(
+  roleId: string,
+): boolean {
+  return (
+    roleId ===
+    config.roles.recruitsId
+  );
+}
+
+export function isBotRole(
+  roleId: string,
+): boolean {
+  return (
+    roleId ===
+    config.roles.botId
+  );
+}
+
+/* =========================================================
+   LOG DA CONFIGURAÇÃO
 ========================================================= */
 
 export function printConfig(): void {
@@ -205,64 +278,106 @@ export function printConfig(): void {
     '⚙️  CONFIGURAÇÃO DO GHOST SYNDICATE',
   );
   console.log(
-    '────────────────────────────────',
+    '════════════════════════════════════',
+  );
+
+  console.log('');
+  console.log(
+    '🏠 SERVIDOR',
   );
 
   console.log(
-    `🤖 Client ID: ${config.discord.clientId}`,
+    `🌐 Nome: ${config.guild.name}`,
   );
 
   console.log(
-    `🌐 Guild ID: ${config.discord.guildId}`,
+    `🆔 Guild ID: ${config.discord.guildId}`,
+  );
+
+  console.log('');
+  console.log(
+    '🤖 BOT',
   );
 
   console.log(
-    `🗄️  Database: ${config.database.url}`,
+    `🆔 Client ID: ${config.discord.clientId}`,
   );
 
   console.log(
-    `🌐 Web Port: ${config.web.port}`,
+    `🤖 Cargo do Bot: ${config.roles.botId}`,
+  );
+
+  console.log('');
+  console.log(
+    '👥 CARGOS',
   );
 
   console.log(
-    `🎫 Categoria de Tickets: ${
+    `👑 Donos da fac: ${config.roles.ownerId}`,
+  );
+
+  console.log(
+    `🛡️ ADM: ${config.roles.leadershipId}`,
+  );
+
+  console.log(
+    `👤 Recrutas: ${config.roles.recruitsId}`,
+  );
+
+  console.log('');
+  console.log(
+    '🎫 TICKETS',
+  );
+
+  console.log(
+    `📁 Categoria: ${
       config.tickets.categoryId ||
       'não definida'
     }`,
   );
 
   console.log(
-    `📜 Canal de Transcripts: ${
+    `📜 Transcripts: ${
       config.tickets
         .transcriptsChannelId ||
       'não definido'
     }`,
   );
 
+  console.log('');
   console.log(
-    `👑 Cargo Liderança: ${
-      config.roles.leadershipId ||
-      'não definido'
-    }`,
+    '💰 FINANCEIRO',
   );
 
   console.log(
-    `💰 Cargo Financeiro: ${
-      config.roles.financeId ||
-      'não definido'
-    }`,
+    `💰 Cargo Financeiro: ${config.roles.financeId}`,
   );
 
   console.log(
-    `🎯 Cargo Operações: ${
-      config.roles.operationsId ||
-      'não definido'
-    }`,
+    `🎯 Cargo Operações: ${config.roles.operationsId}`,
+  );
+
+  console.log('');
+  console.log(
+    '🗄️ DATABASE',
   );
 
   console.log(
-    '────────────────────────────────',
+    `📦 ${config.database.url}`,
   );
 
+  console.log('');
+  console.log(
+    '🌐 WEB',
+  );
+
+  console.log(
+    `🔌 Porta: ${config.web.port}`,
+  );
+
+  console.log('');
+  console.log(
+    '════════════════════════════════════',
+  );
   console.log('');
 }
