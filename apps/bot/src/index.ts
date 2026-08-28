@@ -19,6 +19,10 @@ import {
   onInteraction,
 } from './events/interaction.js';
 
+import {
+  onVoiceState,
+} from './events/voiceState.js';
+
 /* =========================================================
    CLIENT DISCORD
 ========================================================= */
@@ -54,6 +58,27 @@ client.on(
     } catch (error) {
       console.error(
         '❌ Erro ao processar interação:',
+        error,
+      );
+    }
+  },
+);
+
+/* =========================================================
+   VOICE TRACKER
+========================================================= */
+
+client.on(
+  'voiceStateUpdate',
+  async (oldState, newState) => {
+    try {
+      await onVoiceState(
+        oldState,
+        newState,
+      );
+    } catch (error) {
+      console.error(
+        '❌ Erro ao processar voiceStateUpdate:',
         error,
       );
     }
@@ -150,7 +175,7 @@ client.on(
 );
 
 /* =========================================================
-   DEBUG DE INTERAÇÕES
+   DEBUG
 ========================================================= */
 
 client.on(

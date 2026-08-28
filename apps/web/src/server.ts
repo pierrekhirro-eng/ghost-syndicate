@@ -3,26 +3,73 @@
 import 'dotenv/config';
 
 import cors from 'cors';
+
 import express, {
   type NextFunction,
   type Request,
   type Response,
 } from 'express';
+
 import helmet from 'helmet';
-import { PrismaClient } from '@prisma/client';
-import { readFile } from 'node:fs/promises';
+
+import {
+  PrismaClient,
+} from '@prisma/client';
+
+import {
+  readFile,
+} from 'node:fs/promises';
+
 import path from 'node:path';
 
-const app = express();
-const db = new PrismaClient();
+/* =========================================================
+   APP
+========================================================= */
 
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
+const app =
+  express();
 
-const guildId = process.env.DISCORD_GUILD_ID;
+const db =
+  new PrismaClient();
 
-if (!guildId) {
+/* =========================================================
+   MIDDLEWARE
+========================================================= */
+
+app.use(
+  helmet({
+    contentSecurityPolicy:
+      false,
+  }),
+);
+
+app.use(
+  cors(),
+);
+
+app.use(
+  express.json({
+    limit:
+      '2mb',
+  }),
+);
+
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const PORT =
+  Number(
+    process.env.WEB_PORT ??
+      3010,
+  );
+
+const guildId =
+  process.env.DISCORD_GUILD_ID;
+
+if (
+  !guildId
+) {
   console.warn(
     '⚠️ DISCORD_GUILD_ID não foi definido no arquivo .env.',
   );
@@ -33,7 +80,9 @@ if (!guildId) {
 ========================================================= */
 
 function getGuildId(): string {
-  if (!guildId) {
+  if (
+    !guildId
+  ) {
     throw new Error(
       'DISCORD_GUILD_ID não configurado no .env.',
     );
@@ -42,155 +91,603 @@ function getGuildId(): string {
   return guildId;
 }
 
-function formatMoney(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+function getPublicWebUrl(): string {
+  const configured =
+    process.env.WEB_PUBLIC_URL?.trim();
 
-function formatDuration(seconds: number): string {
-  const safeSeconds = Math.max(
-    0,
-    Math.floor(seconds),
-  );
-
-  const hours = Math.floor(
-    safeSeconds / 3600,
-  );
-
-  const minutes = Math.floor(
-    (safeSeconds % 3600) / 60,
-  );
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}min`;
+  if (configured) {
+    return configured.replace(/\/+$/, '');
   }
 
-  return `${minutes}min`;
+  return (
+    `http://localhost:${PORT}`
+  );
 }
 
 function getParamString(
-  value: string | string[] | undefined,
+  value:
+    | string
+    | string[]
+    | undefined,
 ): string {
-  if (Array.isArray(value)) {
-    return value[0] ?? '';
+  if (
+    Array.isArray(
+      value,
+    )
+  ) {
+    return (
+      value[0] ??
+      ''
+    );
   }
 
-  return value ?? '';
+  return (
+    value ??
+    ''
+  );
 }
 
 function escapeHtml(
   value: string,
 ): string {
   return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+    .replaceAll(
+      '&',
+      '&amp;',
+    )
+    .replaceAll(
+      '<',
+      '&lt;',
+    )
+    .replaceAll(
+      '>',
+      '&gt;',
+    )
+    .replaceAll(
+      '"',
+      '&quot;',
+    )
+    .replaceAll(
+      "'",
+      '&#039;',
+    );
+}
+
+function formatMoney(
+  value: number,
+): string {
+  return new Intl.NumberFormat(
+    'pt-BR',
+    {
+      style:
+        'currency',
+
+      currency:
+        'BRL',
+
+      maximumFractionDigits:
+        0,
+    },
+  ).format(
+    Number(
+      value ??
+        0,
+    ),
+  );
+}
+
+function formatDuration(
+  seconds: number,
+): string {
+  const safe =
+    Math.max(
+      0,
+      Math.floor(
+        Number(
+          seconds ??
+            0,
+        ),
+      ),
+    );
+
+  const hours =
+    Math.floor(
+      safe /
+        3600,
+    );
+
+  const minutes =
+    Math.floor(
+      (
+        safe %
+        3600
+      ) /
+        60,
+    );
+
+  const secs =
+    safe %
+    60;
+
+  if (
+    hours > 0
+  ) {
+    return (
+      `${hours}h ` +
+      `${minutes}min`
+    );
+  }
+
+  if (
+    minutes > 0
+  ) {
+    return (
+      `${minutes}min ` +
+      `${secs}s`
+    );
+  }
+
+  return (
+    `${secs}s`
+  );
+}
+
+function formatClock(
+  seconds: number,
+): string {
+  const safe =
+    Math.max(
+      0,
+      Math.floor(
+        Number(
+          seconds ??
+            0,
+        ),
+      ),
+    );
+
+  const hours =
+    Math.floor(
+      safe /
+        3600,
+    )
+      .toString()
+      .padStart(
+        2,
+        '0',
+      );
+
+  const minutes =
+    Math.floor(
+      (
+        safe %
+        3600
+      ) /
+        60,
+    )
+      .toString()
+      .padStart(
+        2,
+        '0',
+      );
+
+  const secs =
+    (
+      safe %
+      60
+    )
+      .toString()
+      .padStart(
+        2,
+        '0',
+      );
+
+  return (
+    `${hours}:${minutes}:${secs}`
+  );
 }
 
 /* =========================================================
    VOICE
 ========================================================= */
 
+type VoiceRankingEntry = {
+  memberId: string;
+  name: string;
+  seconds: number;
+  active: boolean;
+  channelId: string | null;
+  startedAt: Date | null;
+};
+
+function liveSeconds(
+  startedAt: Date,
+): number {
+  return Math.max(
+    0,
+    Math.floor(
+      (
+        Date.now() -
+        startedAt.getTime()
+      ) /
+        1000,
+    ),
+  );
+}
+
 async function getTopVoice(
   serverGuildId: string,
-  limit = 10,
-) {
-  const sessions =
+  limit = 25,
+): Promise<
+  VoiceRankingEntry[]
+> {
+
+  const finished =
     await db.voiceSession.findMany({
       where: {
-        guildId: serverGuildId,
+        guildId:
+          serverGuildId,
+
         endedAt: {
-          not: null,
+          not:
+            null,
         },
       },
-      include: {
-        member: true,
+
+      select: {
+        memberId:
+          true,
+
+        seconds:
+          true,
       },
     });
 
-  const totals = new Map<
-    string,
-    {
-      memberId: string;
-      name: string;
-      seconds: number;
-    }
-  >();
+  const active =
+    await db.voiceSession.findMany({
+      where: {
+        guildId:
+          serverGuildId,
 
-  for (const session of sessions) {
+        endedAt:
+          null,
+      },
+
+      select: {
+        memberId:
+          true,
+
+        channelId:
+          true,
+
+        startedAt:
+          true,
+      },
+    });
+
+  const totals =
+    new Map<
+      string,
+      {
+        seconds: number;
+        active: boolean;
+        channelId:
+          string | null;
+        startedAt:
+          Date | null;
+      }
+    >();
+
+  /*
+   * Sessões finalizadas.
+   */
+
+  for (
+    const session of finished
+  ) {
+
+    const seconds =
+      Math.max(
+        0,
+        Number(
+          session.seconds ??
+            0,
+        ),
+      );
+
     const current =
       totals.get(
         session.memberId,
-      ) ?? {
-        memberId:
-          session.memberId,
+      );
 
-        name:
-          session.member.displayName ||
-          session.member.username ||
-          session.memberId,
+    if (
+      current
+    ) {
 
-        seconds:
-          0,
-      };
+      current.seconds +=
+        seconds;
 
-    current.seconds += Math.max(
-      0,
-      session.seconds,
-    );
+      continue;
+    }
 
     totals.set(
       session.memberId,
-      current,
+      {
+        seconds,
+
+        active:
+          false,
+
+        channelId:
+          null,
+
+        startedAt:
+          null,
+      },
     );
   }
 
-  return [...totals.values()]
+  /*
+   * Sessões ativas.
+   */
+
+  for (
+    const session of active
+  ) {
+
+    const seconds =
+      liveSeconds(
+        session.startedAt,
+      );
+
+    const current =
+      totals.get(
+        session.memberId,
+      );
+
+    if (
+      current
+    ) {
+
+      current.seconds +=
+        seconds;
+
+      current.active =
+        true;
+
+      current.channelId =
+        session.channelId;
+
+      current.startedAt =
+        session.startedAt;
+
+      continue;
+    }
+
+    totals.set(
+      session.memberId,
+      {
+        seconds,
+
+        active:
+          true,
+
+        channelId:
+          session.channelId,
+
+        startedAt:
+          session.startedAt,
+      },
+    );
+  }
+
+  /*
+   * Membros.
+   */
+
+  const members =
+    await db.member.findMany({
+      where: {
+        guildId:
+          serverGuildId,
+      },
+
+      select: {
+        id:
+          true,
+
+        username:
+          true,
+
+        displayName:
+          true,
+      },
+    });
+
+  const memberMap =
+    new Map(
+      members.map(
+        (
+          member,
+        ) => [
+          member.id,
+          member,
+        ],
+      ),
+    );
+
+  /*
+   * Ranking.
+   */
+
+  return [...totals.entries()]
+    .map(
+      (
+        [
+          memberId,
+          data,
+        ],
+      ) => {
+
+        const member =
+          memberMap.get(
+            memberId,
+          );
+
+        return {
+          memberId,
+
+          name:
+            member?.displayName ||
+            member?.username ||
+            memberId,
+
+          seconds:
+            Math.max(
+              0,
+              Math.floor(
+                data.seconds,
+              ),
+            ),
+
+          active:
+            data.active,
+
+          channelId:
+            data.channelId,
+
+          startedAt:
+            data.startedAt,
+        };
+      },
+    )
     .sort(
-      (a, b) =>
-        b.seconds -
-        a.seconds,
+      (
+        a,
+        b,
+      ) => {
+
+        if (
+          b.seconds !==
+          a.seconds
+        ) {
+          return (
+            b.seconds -
+            a.seconds
+          );
+        }
+
+        if (
+          a.active !==
+          b.active
+        ) {
+          return a.active
+            ? -1
+            : 1;
+        }
+
+        return a.memberId.localeCompare(
+          b.memberId,
+        );
+      },
     )
     .slice(
       0,
-      limit,
+      Math.min(
+        Math.max(
+          1,
+          Math.floor(
+            Number(
+              limit,
+            ),
+          ),
+        ),
+        100,
+      ),
     );
 }
+
+/* =========================================================
+   VOICE MEMBER
+========================================================= */
 
 async function getMemberVoiceSeconds(
   serverGuildId: string,
   userId: string,
 ): Promise<number> {
-  const sessions =
+
+  const finished =
     await db.voiceSession.findMany({
       where: {
-        guildId: serverGuildId,
-        memberId: userId,
+        guildId:
+          serverGuildId,
+
+        memberId:
+          userId,
+
         endedAt: {
-          not: null,
+          not:
+            null,
         },
       },
+
       select: {
-        seconds: true,
+        seconds:
+          true,
       },
     });
 
-  return sessions.reduce(
-    (
-      total,
-      session,
-    ) =>
-      total +
-      Math.max(
-        0,
-        session.seconds,
-      ),
-    0,
+  const totalFinished =
+    finished.reduce(
+      (
+        total,
+        session,
+      ) =>
+        total +
+        Math.max(
+          0,
+          Number(
+            session.seconds ??
+              0,
+          ),
+        ),
+      0,
+    );
+
+  const active =
+    await db.voiceSession.findFirst({
+      where: {
+        guildId:
+          serverGuildId,
+
+        memberId:
+          userId,
+
+        endedAt:
+          null,
+      },
+
+      orderBy: {
+        startedAt:
+          'desc',
+      },
+
+      select: {
+        startedAt:
+          true,
+      },
+    });
+
+  const activeSeconds =
+    active
+      ? liveSeconds(
+          active.startedAt,
+        )
+      : 0;
+
+  return (
+    totalFinished +
+    activeSeconds
   );
 }
 
@@ -204,32 +701,52 @@ app.get(
     _req: Request,
     res: Response,
   ) => {
+
     try {
+
       await db.$queryRaw`SELECT 1`;
 
       res.json({
-        status: 'online',
-        database: 'online',
+        status:
+          'online',
+
+        database:
+          'online',
+
         service:
           'Ghost Syndicate Web',
+
         timestamp:
           new Date().toISOString(),
       });
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
-        '[WEB] Database health error:',
+        '[WEB] Health:',
         error,
       );
 
-      res.status(503).json({
-        status: 'online',
-        database: 'offline',
-        service:
-          'Ghost Syndicate Web',
-        timestamp:
-          new Date().toISOString(),
-      });
+      res
+        .status(503)
+        .json({
+          status:
+            'online',
+
+          database:
+            'offline',
+
+          service:
+            'Ghost Syndicate Web',
+
+          timestamp:
+            new Date().toISOString(),
+        });
+
     }
+
   },
 );
 
@@ -243,7 +760,9 @@ app.get(
     _req: Request,
     res: Response,
   ) => {
+
     try {
+
       const id =
         getGuildId();
 
@@ -262,24 +781,58 @@ app.get(
 
       res.json({
         guild,
-        topVoice,
+
+        topVoice:
+          topVoice.map(
+            (
+              member,
+            ) => ({
+              memberId:
+                member.memberId,
+
+              name:
+                member.name,
+
+              seconds:
+                member.seconds,
+
+              active:
+                member.active,
+
+              channelId:
+                member.channelId,
+
+              duration:
+                formatDuration(
+                  member.seconds,
+                ),
+            }),
+          ),
       });
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
         '[WEB API] /api/overview:',
         error,
       );
 
-      res.status(500).json({
-        error:
-          'Não foi possível carregar o painel.',
-      });
+      res
+        .status(500)
+        .json({
+          error:
+            'Não foi possível carregar o painel.',
+        });
+
     }
+
   },
 );
 
 /* =========================================================
-   VOICE MEMBER
+   VOICE USER
 ========================================================= */
 
 app.get(
@@ -288,7 +841,9 @@ app.get(
     req: Request,
     res: Response,
   ) => {
+
     try {
+
       const id =
         getGuildId();
 
@@ -297,13 +852,19 @@ app.get(
           req.params.userId,
         );
 
-      if (!userId) {
-        res.status(400).json({
-          error:
-            'ID do usuário inválido.',
-        });
+      if (
+        !userId
+      ) {
+
+        res
+          .status(400)
+          .json({
+            error:
+              'ID do usuário inválido.',
+          });
 
         return;
+
       }
 
       const seconds =
@@ -314,28 +875,43 @@ app.get(
 
       res.json({
         userId,
+
         seconds,
+
         duration:
           formatDuration(
             seconds,
           ),
+
+        clock:
+          formatClock(
+            seconds,
+          ),
       });
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
         '[WEB API] /api/voice/:userId:',
         error,
       );
 
-      res.status(500).json({
-        error:
-          'Não foi possível carregar as horas em call.',
-      });
+      res
+        .status(500)
+        .json({
+          error:
+            'Não foi possível carregar as horas em call.',
+        });
+
     }
+
   },
 );
 
 /* =========================================================
-   VOICE RANKING
+   RANKING API
 ========================================================= */
 
 app.get(
@@ -344,7 +920,9 @@ app.get(
     _req: Request,
     res: Response,
   ) => {
+
     try {
+
       const id =
         getGuildId();
 
@@ -355,6 +933,9 @@ app.get(
         );
 
       res.json({
+        updatedAt:
+          new Date().toISOString(),
+
         ranking:
           ranking.map(
             (
@@ -377,20 +958,133 @@ app.get(
                 formatDuration(
                   member.seconds,
                 ),
+
+              clock:
+                formatClock(
+                  member.seconds,
+                ),
+
+              active:
+                member.active,
+
+              channelId:
+                member.channelId,
+
+              startedAt:
+                member.startedAt
+                  ?.toISOString() ??
+                null,
             }),
           ),
       });
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
         '[WEB API] /api/ranking/voice:',
         error,
       );
 
-      res.status(500).json({
-        error:
-          'Não foi possível carregar o ranking.',
-      });
+      res
+        .status(500)
+        .json({
+          error:
+            'Não foi possível carregar o ranking.',
+        });
+
     }
+
+  },
+);
+
+/*
+ * Alias usado pela página nova.
+ */
+
+app.get(
+  '/api/ranking/live',
+  async (
+    _req: Request,
+    res: Response,
+  ) => {
+
+    try {
+
+      const id =
+        getGuildId();
+
+      const ranking =
+        await getTopVoice(
+          id,
+          100,
+        );
+
+      res.json({
+        updatedAt:
+          new Date().toISOString(),
+
+        ranking:
+          ranking.map(
+            (
+              member,
+              index,
+            ) => ({
+              position:
+                index + 1,
+
+              memberId:
+                member.memberId,
+
+              name:
+                member.name,
+
+              seconds:
+                member.seconds,
+
+              duration:
+                formatDuration(
+                  member.seconds,
+                ),
+
+              clock:
+                formatClock(
+                  member.seconds,
+                ),
+
+              active:
+                member.active,
+
+              channelId:
+                member.channelId,
+
+              startedAt:
+                member.startedAt
+                  ?.toISOString() ??
+                null,
+            }),
+          ),
+      });
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        '[WEB API] /api/ranking/live:',
+        error,
+      );
+
+      res
+        .status(500)
+        .json({
+          error:
+            'Não foi possível carregar o ranking.',
+        });
+
+    }
+
   },
 );
 
@@ -404,7 +1098,9 @@ app.get(
     _req: Request,
     res: Response,
   ) => {
+
     try {
+
       const id =
         getGuildId();
 
@@ -415,19 +1111,26 @@ app.get(
           },
         });
 
-      if (!guild) {
-        res.status(404).json({
-          error:
-            'Servidor não encontrado no banco de dados.',
-        });
+      if (
+        !guild
+      ) {
+
+        res
+          .status(404)
+          .json({
+            error:
+              'Servidor não encontrado no banco de dados.',
+          });
 
         return;
+
       }
 
       const movements =
         await db.cashMovement.findMany({
           where: {
-            guildId: id,
+            guildId:
+              id,
           },
 
           orderBy: {
@@ -435,10 +1138,12 @@ app.get(
               'desc',
           },
 
-          take: 25,
+          take:
+            25,
 
           include: {
-            member: true,
+            member:
+              true,
           },
         });
 
@@ -492,17 +1197,25 @@ app.get(
             }),
           ),
       });
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
         '[WEB API] /api/finance:',
         error,
       );
 
-      res.status(500).json({
-        error:
-          'Não foi possível carregar os dados financeiros.',
-      });
+      res
+        .status(500)
+        .json({
+          error:
+            'Não foi possível carregar os dados financeiros.',
+        });
+
     }
+
   },
 );
 
@@ -516,7 +1229,9 @@ app.get(
     _req: Request,
     res: Response,
   ) => {
+
     try {
+
       const id =
         getGuildId();
 
@@ -532,23 +1247,32 @@ app.get(
               'desc',
           },
 
-          take: 50,
+          take:
+            50,
         });
 
       res.json({
         operations,
       });
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
         '[WEB API] /api/operations:',
         error,
       );
 
-      res.status(500).json({
-        error:
-          'Não foi possível carregar as operações.',
-      });
+      res
+        .status(500)
+        .json({
+          error:
+            'Não foi possível carregar as operações.',
+        });
+
     }
+
   },
 );
 
@@ -562,7 +1286,9 @@ app.get(
     _req: Request,
     res: Response,
   ) => {
+
     try {
+
       const id =
         getGuildId();
 
@@ -582,31 +1308,35 @@ app.get(
       res.json({
         missions,
       });
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
         '[WEB API] /api/missions:',
         error,
       );
 
-      res.status(500).json({
-        error:
-          'Não foi possível carregar as missões.',
-      });
+      res
+        .status(500)
+        .json({
+          error:
+            'Não foi possível carregar as missões.',
+        });
+
     }
+
   },
 );
 
 /* =========================================================
-   TRANSCRIPTS
+   TRANSCRIPT HELPERS
 ========================================================= */
 
 function getTranscriptFilePath(
   transcriptId: string,
 ): string | null {
-  /*
-   * Aceita somente IDs numéricos do Discord.
-   * Isso também evita path traversal.
-   */
 
   if (
     !/^\d{15,25}$/.test(
@@ -616,17 +1346,36 @@ function getTranscriptFilePath(
     return null;
   }
 
-  return path.join(
-    process.cwd(),
-    'storage',
-    'transcripts',
-    `transcript-${transcriptId}.html`,
-  );
+  const directory =
+    path.resolve(
+      process.cwd(),
+      'storage',
+      'transcripts',
+    );
+
+  const filename =
+    `transcript-${transcriptId}.html`;
+
+  const filePath =
+    path.resolve(
+      directory,
+      filename,
+    );
+
+  if (
+    !filePath.startsWith(
+      `${directory}${path.sep}`,
+    )
+  ) {
+    return null;
+  }
+
+  return filePath;
 }
 
-/* ---------------------------------------------------------
-   Página principal
---------------------------------------------------------- */
+/* =========================================================
+   TRANSCRIPT VIEWER
+========================================================= */
 
 app.get(
   '/transcripts/:id',
@@ -634,6 +1383,7 @@ app.get(
     req: Request,
     res: Response,
   ) => {
+
     const transcriptId =
       getParamString(
         req.params.id,
@@ -644,21 +1394,26 @@ app.get(
         transcriptId,
       );
 
-    if (!filePath) {
+    if (
+      !filePath
+    ) {
+
       res
         .status(400)
         .type('html')
         .send(
           createTranscriptErrorPage(
             'Transcript inválido',
-            'O identificador informado não é válido.',
+            'O identificador informado não possui um formato válido.',
           ),
         );
 
       return;
+
     }
 
     try {
+
       await readFile(
         filePath,
         'utf8',
@@ -671,7 +1426,11 @@ app.get(
             transcriptId,
           ),
         );
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       const code =
         error &&
         typeof error ===
@@ -682,28 +1441,32 @@ app.get(
                 error as {
                   code?: unknown;
                 }
-              ).code ?? '',
+              ).code ??
+                '',
             )
           : '';
 
       if (
-        code === 'ENOENT'
+        code ===
+        'ENOENT'
       ) {
+
         res
           .status(404)
           .type('html')
           .send(
             createTranscriptErrorPage(
               'Transcript não encontrado',
-              'Esse histórico ainda não foi arquivado ou não está mais disponível.',
+              'O histórico ainda não foi arquivado ou não está disponível.',
             ),
           );
 
         return;
+
       }
 
       console.error(
-        '[WEB] /transcripts/:id:',
+        '[WEB] Transcript:',
         error,
       );
 
@@ -713,16 +1476,18 @@ app.get(
         .send(
           createTranscriptErrorPage(
             'Erro ao carregar transcript',
-            'O servidor não conseguiu abrir esse histórico.',
+            'O servidor encontrou um erro ao abrir esse histórico.',
           ),
         );
+
     }
+
   },
 );
 
-/* ---------------------------------------------------------
-   Transcript original
---------------------------------------------------------- */
+/* =========================================================
+   TRANSCRIPT RAW
+========================================================= */
 
 app.get(
   '/transcripts/raw/:id',
@@ -730,6 +1495,7 @@ app.get(
     req: Request,
     res: Response,
   ) => {
+
     const transcriptId =
       getParamString(
         req.params.id,
@@ -740,7 +1506,10 @@ app.get(
         transcriptId,
       );
 
-    if (!filePath) {
+    if (
+      !filePath
+    ) {
+
       res
         .status(400)
         .type('text')
@@ -749,27 +1518,130 @@ app.get(
         );
 
       return;
+
     }
 
     try {
+
       const html =
         await readFile(
           filePath,
           'utf8',
         );
 
+      const theme =
+        [
+          '<style id="ghost-syndicate-theme">',
+
+          ':root{',
+          'color-scheme:dark!important;',
+          '}',
+
+          'html,body{',
+          'margin:0!important;',
+          'min-height:100%!important;',
+          'background:#202225!important;',
+          'color:#f2f3f5!important;',
+          '}',
+
+          'body{',
+          'font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;',
+          'font-size:14px!important;',
+          'line-height:1.55!important;',
+          '}',
+
+          '*,*::before,*::after{',
+          'box-sizing:border-box!important;',
+          'text-shadow:none!important;',
+          'filter:none!important;',
+          '}',
+
+          'p,span,div,section,article,li,td,th,strong,b{',
+          'color:#f2f3f5!important;',
+          '}',
+
+          'small,time,[class*="time"],[class*="Time"],[class*="timestamp"],[class*="Timestamp"]{',
+          'color:#b5bac1!important;',
+          '}',
+
+          'a{',
+          'color:#43ff98!important;',
+          '}',
+
+          'h1,h2,h3,h4,h5,h6{',
+          'color:#ffffff!important;',
+          '}',
+
+          'pre,code{',
+          'background:#111416!important;',
+          'color:#e8fff0!important;',
+          'border:1px solid rgba(67,255,152,.14)!important;',
+          'border-radius:8px!important;',
+          '}',
+
+          '[class*="embed"],[class*="Embed"]{',
+          'background:#2b2d31!important;',
+          'color:#f2f3f5!important;',
+          'border-color:rgba(67,255,152,.16)!important;',
+          '}',
+
+          'button,[role="button"]{',
+          'display:none!important;',
+          '}',
+
+          'img{',
+          'max-width:100%!important;',
+          'height:auto!important;',
+          'object-fit:contain!important;',
+          '}',
+
+          '::-webkit-scrollbar{',
+          'width:10px;',
+          'height:10px;',
+          '}',
+
+          '::-webkit-scrollbar-track{',
+          'background:#18191c;',
+          '}',
+
+          '::-webkit-scrollbar-thumb{',
+          'background:#365945;',
+          'border-radius:999px;',
+          '}',
+
+          '::-webkit-scrollbar-thumb:hover{',
+          'background:#43ff98;',
+          '}',
+
+          '</style>',
+        ].join('');
+
+      const finalHtml =
+        html.includes(
+          '</head>',
+        )
+          ? html.replace(
+              '</head>',
+              `${theme}</head>`,
+            )
+          : `${theme}${html}`;
+
       res
         .type('html')
         .set(
           'Cache-Control',
-          'private, no-store, max-age=0',
+          'private, no-store, max-age=0, must-revalidate',
         )
         .send(
-          html,
+          finalHtml,
         );
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
+
       console.error(
-        '[WEB] /transcripts/raw/:id:',
+        '[WEB] Transcript raw:',
         error,
       );
 
@@ -779,7 +1651,9 @@ app.get(
         .send(
           'Transcript não encontrado.',
         );
+
     }
+
   },
 );
 
@@ -787,9 +1661,104 @@ app.get(
    TRANSCRIPT PAGE
 ========================================================= */
 
+function createTranscriptErrorPage(
+  title: string,
+  message: string,
+): string {
+  return `
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#06110a">
+  <meta name="color-scheme" content="dark">
+  <title>${escapeHtml(title)} • Ghost Syndicate</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: #effff5;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(67,255,152,.11), transparent 40%),
+        #030806;
+    }
+    .card {
+      width: min(620px, 100%);
+      padding: 34px;
+      border: 1px solid rgba(67,255,152,.18);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(9,25,15,.98), rgba(4,12,8,.98));
+      box-shadow: 0 35px 120px rgba(0,0,0,.42);
+      animation: enter .35s ease both;
+    }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .logo {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 20px;
+      border: 1px solid rgba(67,255,152,.24);
+      border-radius: 16px;
+      background: rgba(67,255,152,.06);
+      font-size: 25px;
+    }
+    .eyebrow {
+      margin: 0 0 7px;
+      color: #43ff98;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.05;
+      letter-spacing: -.045em;
+    }
+    p {
+      color: #82a18e;
+      line-height: 1.7;
+    }
+    .info {
+      margin-top: 20px;
+      padding: 13px;
+      border: 1px solid rgba(67,255,152,.14);
+      border-radius: 13px;
+      background: rgba(67,255,152,.025);
+      color: #93bda0;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="logo">👻</div>
+    <p class="eyebrow">Ghost Syndicate</p>
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(message)}</p>
+    <div class="info">📜 Central de Transcripts</div>
+  </main>
+</body>
+</html>
+`;
+}
+
 function createTranscriptPage(
   transcriptId: string,
 ): string {
+
   const safeId =
     escapeHtml(
       transcriptId,
@@ -800,7 +1769,9 @@ function createTranscriptPage(
 
   return `
 <!doctype html>
+
 <html lang="pt-BR">
+
 <head>
 
   <meta charset="utf-8">
@@ -812,7 +1783,7 @@ function createTranscriptPage(
 
   <meta
     name="theme-color"
-    content="#04100a"
+    content="#07100a"
   >
 
   <meta
@@ -821,44 +1792,53 @@ function createTranscriptPage(
   >
 
   <title>
-    Transcript #${safeId}
-    • Ghost Syndicate
+    Transcript #${safeId} • Ghost Syndicate
   </title>
 
   <style>
 
     :root {
-      color-scheme: dark;
+
+      color-scheme:
+        dark;
 
       --bg:
-        #020604;
-
-      --bg-2:
-        #06100a;
+        #060a08;
 
       --panel:
-        rgba(7, 20, 12, .90);
+        #0b110e;
 
-      --line:
-        rgba(67, 255, 152, .16);
+      --panel-2:
+        #101713;
 
-      --line-strong:
-        rgba(67, 255, 152, .32);
+      --border:
+        rgba(
+          67,
+          255,
+          152,
+          .13
+        );
+
+      --border-strong:
+        rgba(
+          67,
+          255,
+          152,
+          .30
+        );
 
       --green:
         #43ff98;
 
-      --green-2:
-        #21d978;
-
       --green-soft:
-        #a4ffc9;
+        #b0ffd0;
 
       --text:
-        #ebfff3;
+        #eef8f2;
 
       --muted:
-        #7ba28c;
+        #7c9484;
+
     }
 
     * {
@@ -868,17 +1848,18 @@ function createTranscriptPage(
 
     html,
     body {
-      width:
-        100%;
+      margin:
+        0;
 
       min-height:
         100%;
 
-      margin:
-        0;
+      background:
+        var(--bg);
     }
 
     body {
+
       min-height:
         100vh;
 
@@ -888,34 +1869,6 @@ function createTranscriptPage(
       color:
         var(--text);
 
-      background:
-        radial-gradient(
-          circle at 12% 0%,
-          rgba(
-            67,
-            255,
-            152,
-            .13
-          ),
-          transparent 30%
-        ),
-        radial-gradient(
-          circle at 100% 25%,
-          rgba(
-            33,
-            217,
-            120,
-            .08
-          ),
-          transparent 29%
-        ),
-        linear-gradient(
-          180deg,
-          #010403 0%,
-          #041008 45%,
-          #020604 100%
-        );
-
       font-family:
         Inter,
         ui-sans-serif,
@@ -924,9 +1877,34 @@ function createTranscriptPage(
         BlinkMacSystemFont,
         "Segoe UI",
         sans-serif;
+
+      background:
+        radial-gradient(
+          circle at 10% 0%,
+          rgba(
+            67,
+            255,
+            152,
+            .08
+          ),
+          transparent 28%
+        ),
+        radial-gradient(
+          circle at 100% 100%,
+          rgba(
+            67,
+            255,
+            152,
+            .035
+          ),
+          transparent 25%
+        ),
+        var(--bg);
+
     }
 
     body::before {
+
       content:
         "";
 
@@ -939,11 +1917,8 @@ function createTranscriptPage(
       pointer-events:
         none;
 
-      z-index:
-        50;
-
       opacity:
-        .045;
+        .010;
 
       background:
         repeating-linear-gradient(
@@ -952,77 +1927,142 @@ function createTranscriptPage(
             255,
             255,
             255,
-            .8
-          ) 0px,
+            .22
+          ) 0,
           rgba(
             255,
             255,
             255,
-            .8
+            .22
           ) 1px,
           transparent 1px,
-          transparent 4px
+          transparent 8px
         );
+
     }
 
     body::after {
+
       content:
         "";
 
       position:
         fixed;
 
-      inset:
-        0;
+      width:
+        420px;
+
+      height:
+        420px;
+
+      left:
+        -220px;
+
+      top:
+        -220px;
 
       pointer-events:
         none;
 
-      z-index:
-        49;
+      border-radius:
+        50%;
 
       background:
-        linear-gradient(
-          90deg,
-          transparent 0%,
+        radial-gradient(
+          circle,
           rgba(
             67,
             255,
             152,
-            .025
-          ) 50%,
-          transparent 100%
+            .09
+          ),
+          transparent 68%
         );
 
-      transform:
-        translateX(-100%);
+      filter:
+        blur(
+          30px
+        );
 
       animation:
-        sweep 8s linear infinite;
+        glow
+        12s
+        ease-in-out
+        infinite;
+
     }
 
-    @keyframes sweep {
-      to {
+    @keyframes glow {
+
+      0%,
+      100% {
         transform:
-          translateX(100%);
+          translate(
+            0,
+            0
+          );
       }
+
+      50% {
+        transform:
+          translate(
+            90px,
+            50px
+          );
+      }
+
+    }
+
+    @keyframes fade {
+
+      from {
+        opacity:
+          0;
+
+        transform:
+          translateY(
+            9px
+          );
+      }
+
+      to {
+        opacity:
+          1;
+
+        transform:
+          translateY(
+            0
+          );
+      }
+
     }
 
     .page {
+
+      position:
+        relative;
+
+      z-index:
+        1;
+
       width:
         min(
           1500px,
-          calc(100% - 28px)
+          calc(
+            100% - 28px
+          )
         );
 
       margin:
         0 auto;
 
       padding:
-        18px 0 30px;
+        14px 0 24px;
+
     }
 
     .topbar {
+
       position:
         sticky;
 
@@ -1030,7 +2070,7 @@ function createTranscriptPage(
         10px;
 
       z-index:
-        40;
+        30;
 
       display:
         flex;
@@ -1042,43 +2082,47 @@ function createTranscriptPage(
         space-between;
 
       gap:
-        15px;
+        12px;
+
+      min-height:
+        58px;
 
       padding:
-        12px 14px;
+        9px 12px;
 
       margin-bottom:
-        16px;
+        12px;
 
       border:
         1px solid
-        var(--line);
+        var(--border);
 
       border-radius:
-        18px;
+        16px;
 
       background:
         rgba(
-          3,
-          12,
-          7,
-          .84
+          8,
+          14,
+          10,
+          .94
         );
 
       backdrop-filter:
-        blur(18px);
-
-      box-shadow:
-        0 20px 70px
-        rgba(
-          0,
-          0,
-          0,
-          .30
+        blur(
+          14px
         );
+
+      animation:
+        fade
+        .45s
+        ease
+        both;
+
     }
 
     .brand {
+
       display:
         flex;
 
@@ -1086,18 +2130,17 @@ function createTranscriptPage(
         center;
 
       gap:
-        11px;
+        10px;
 
-      min-width:
-        0;
     }
 
     .logo {
+
       width:
-        42px;
+        40px;
 
       height:
-        42px;
+        40px;
 
       display:
         grid;
@@ -1105,104 +2148,78 @@ function createTranscriptPage(
       place-items:
         center;
 
-      flex:
-        0 0 auto;
-
       border:
         1px solid
-        var(--line-strong);
+        var(--border-strong);
 
       border-radius:
-        13px;
+        12px;
 
       background:
-        radial-gradient(
-          circle at 35% 25%,
-          rgba(
-            67,
-            255,
-            152,
-            .16
-          ),
-          transparent 48%
-        ),
         linear-gradient(
           145deg,
-          #0b2516,
-          #06120b
+          #10271a,
+          #07110b
         );
 
       color:
         var(--green);
 
-      box-shadow:
-        0 0 28px
-        rgba(
-          67,
-          255,
-          152,
-          .08
-        );
     }
 
     .eyebrow {
+
       margin:
-        0 0 2px;
+        0 0 1px;
 
       color:
         var(--green);
 
       font-size:
-        10px;
+        8px;
 
       font-weight:
-        900;
+        950;
 
       letter-spacing:
-        .17em;
+        .19em;
 
       text-transform:
         uppercase;
 
-      text-shadow:
-        0 0 15px
-        rgba(
-          67,
-          255,
-          152,
-          .28
-        );
     }
 
     .brand-title {
+
       margin:
         0;
 
       font-size:
-        14px;
+        13px;
 
       font-weight:
         850;
+
     }
 
-    .right {
+    .actions {
+
       display:
         flex;
-
-      gap:
-        8px;
 
       align-items:
         center;
 
+      gap:
+        7px;
+
       flex-wrap:
         wrap;
 
-      justify-content:
-        flex-end;
     }
 
-    .pill {
+    .status {
+
       display:
         inline-flex;
 
@@ -1213,37 +2230,34 @@ function createTranscriptPage(
         7px;
 
       min-height:
-        34px;
+        31px;
 
       padding:
-        7px 11px;
+        7px 10px;
 
       border:
         1px solid
-        var(--line);
+        var(--border);
 
       border-radius:
         999px;
 
       background:
-        rgba(
-          6,
-          20,
-          11,
-          .72
-        );
+        #09110c;
 
       color:
-        var(--muted);
+        #87a08f;
 
       font-size:
-        10px;
+        9px;
 
       font-weight:
         800;
+
     }
 
     .dot {
+
       width:
         7px;
 
@@ -1257,18 +2271,17 @@ function createTranscriptPage(
         var(--green);
 
       box-shadow:
-        0 0 16px
+        0 0 12px
         rgba(
           67,
           255,
           152,
-          .9
+          .85
         );
+
     }
 
     .button {
-      appearance:
-        none;
 
       display:
         inline-flex;
@@ -1279,41 +2292,30 @@ function createTranscriptPage(
       justify-content:
         center;
 
+      gap:
+        6px;
+
       min-height:
-        34px;
+        31px;
 
       padding:
-        8px 11px;
+        7px 10px;
 
       border:
         1px solid
-        var(--line-strong);
+        var(--border);
 
       border-radius:
-        10px;
+        9px;
+
+      background:
+        #09110c;
 
       color:
         var(--green-soft);
 
-      background:
-        linear-gradient(
-          180deg,
-          rgba(
-            14,
-            38,
-            23,
-            .96
-          ),
-          rgba(
-            5,
-            17,
-            10,
-            .96
-          )
-        );
-
       font:
-        800 10px/1
+        800 9px/1
         inherit;
 
       text-decoration:
@@ -1323,90 +2325,152 @@ function createTranscriptPage(
         pointer;
 
       transition:
-        transform .18s ease,
-        border-color .18s ease,
-        box-shadow .18s ease;
+        .18s
+        ease;
+
     }
 
     .button:hover {
-      transform:
-        translateY(-1px);
 
       border-color:
-        rgba(
-          67,
-          255,
-          152,
-          .52
+        var(--border-strong);
+
+      background:
+        #0e1912;
+
+      transform:
+        translateY(
+          -1px
         );
 
-      box-shadow:
-        0 0 24px
-        rgba(
-          67,
-          255,
-          152,
-          .10
-        );
     }
 
     .hero {
+
       display:
         grid;
 
       grid-template-columns:
-        minmax(0, 1fr)
-        minmax(220px, 280px);
+        minmax(
+          0,
+          1fr
+        )
+        250px;
 
       gap:
-        14px;
+        12px;
 
       margin-bottom:
         12px;
+
     }
 
     .hero-main,
     .hero-id {
+
       border:
         1px solid
-        var(--line);
+        var(--border);
 
       border-radius:
-        19px;
+        17px;
 
       background:
         linear-gradient(
-          180deg,
+          135deg,
           rgba(
-            7,
-            22,
-            13,
-            .95
+            11,
+            24,
+            15,
+            .97
           ),
           rgba(
-            4,
-            12,
-            8,
-            .96
+            6,
+            13,
+            9,
+            .97
           )
         );
 
-      box-shadow:
-        0 28px 90px
-        rgba(
-          0,
-          0,
-          0,
-          .22
-        );
+      animation:
+        fade
+        .5s
+        .05s
+        ease
+        both;
+
     }
 
     .hero-main {
+
       padding:
-        24px;
+        22px;
+
+    }
+
+    .hero-kicker {
+
+      margin:
+        0 0 7px;
+
+      color:
+        var(--green);
+
+      font-size:
+        9px;
+
+      font-weight:
+        950;
+
+      letter-spacing:
+        .17em;
+
+      text-transform:
+        uppercase;
+
+    }
+
+    .hero-main h1 {
+
+      margin:
+        0;
+
+      font-size:
+        clamp(
+          28px,
+          4vw,
+          48px
+        );
+
+      line-height:
+        .98;
+
+      letter-spacing:
+        -.055em;
+
+    }
+
+    .hero-main p {
+
+      max-width:
+        760px;
+
+      margin:
+        11px 0 0;
+
+      color:
+        var(--muted);
+
+      font-size:
+        12px;
+
+      line-height:
+        1.6;
+
     }
 
     .hero-id {
+
       display:
         flex;
 
@@ -1417,85 +2481,37 @@ function createTranscriptPage(
         space-between;
 
       padding:
-        18px;
+        17px;
+
+      animation-delay:
+        .08s;
+
     }
 
-    .kicker {
+    .label {
+
       margin:
-        0 0 8px;
+        0 0 7px;
 
       color:
-        var(--green);
+        #587060;
 
       font-size:
-        10px;
+        8px;
 
       font-weight:
-        900;
+        950;
 
       letter-spacing:
-        .16em;
+        .14em;
 
       text-transform:
         uppercase;
-    }
 
-    h1 {
-      margin:
-        0;
-
-      font-size:
-        clamp(
-          30px,
-          4vw,
-          54px
-        );
-
-      line-height:
-        .98;
-
-      letter-spacing:
-        -.055em;
-    }
-
-    .lead {
-      max-width:
-        720px;
-
-      margin:
-        13px 0 0;
-
-      color:
-        var(--muted);
-
-      font-size:
-        13px;
-
-      line-height:
-        1.65;
-    }
-
-    .id-label {
-      margin:
-        0 0 8px;
-
-      color:
-        #5f8a70;
-
-      font-size:
-        9px;
-
-      font-weight:
-        900;
-
-      letter-spacing:
-        .15em;
-
-      text-transform:
-        uppercase;
     }
 
     .id {
+
       margin:
         0;
 
@@ -1503,30 +2519,38 @@ function createTranscriptPage(
         var(--green-soft);
 
       font:
-        800 12px/1.45
+        800 11px/1.4
         ui-monospace,
-        SFMono-Regular,
-        Menlo,
-        Consolas,
         monospace;
 
       overflow-wrap:
         anywhere;
+
     }
 
-    .status {
+    .archive {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      gap:
+        8px;
+
       margin-top:
-        16px;
+        14px;
 
       padding:
-        11px 12px;
+        9px 10px;
 
       border:
         1px solid
-        var(--line);
+        var(--border);
 
       border-radius:
-        13px;
+        10px;
 
       background:
         rgba(
@@ -1537,113 +2561,48 @@ function createTranscriptPage(
         );
 
       color:
-        #89b59a;
-
-      font-size:
-        10px;
-
-      line-height:
-        1.55;
-    }
-
-    .stats {
-      display:
-        grid;
-
-      grid-template-columns:
-        repeat(
-          3,
-          minmax(0, 1fr)
-        );
-
-      gap:
-        10px;
-
-      margin-bottom:
-        12px;
-    }
-
-    .stat {
-      padding:
-        13px 14px;
-
-      border:
-        1px solid
-        var(--line);
-
-      border-radius:
-        15px;
-
-      background:
-        rgba(
-          5,
-          17,
-          10,
-          .76
-        );
-    }
-
-    .stat-label {
-      margin:
-        0 0 4px;
-
-      color:
-        #628a71;
+        #88a997;
 
       font-size:
         9px;
 
-      font-weight:
-        900;
-
-      letter-spacing:
-        .12em;
-
-      text-transform:
-        uppercase;
     }
 
-    .stat-value {
-      margin:
-        0;
+    .content {
 
-      font-size:
-        13px;
-
-      font-weight:
-        850;
-    }
-
-    .viewer {
       overflow:
         hidden;
 
       border:
         1px solid
-        var(--line-strong);
+        var(--border);
 
       border-radius:
-        21px;
+        17px;
 
       background:
-        rgba(
-          2,
-          9,
-          5,
-          .72
-        );
+        var(--panel);
 
       box-shadow:
-        0 35px 120px
+        0 25px 90px
         rgba(
           0,
           0,
           0,
-          .26
+          .28
         );
+
+      animation:
+        fade
+        .55s
+        .1s
+        ease
+        both;
+
     }
 
-    .viewer-head {
+    .content-head {
+
       display:
         flex;
 
@@ -1661,27 +2620,89 @@ function createTranscriptPage(
 
       border-bottom:
         1px solid
-        var(--line);
+        var(--border);
 
       background:
-        linear-gradient(
-          180deg,
-          rgba(
-            10,
-            31,
-            18,
-            .92
-          ),
-          rgba(
-            5,
-            17,
-            10,
-            .88
-          )
-        );
+        var(--panel-2);
+
     }
 
-    .viewer-name {
+    .content-title {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      gap:
+        7px;
+
+      margin:
+        0;
+
+      font-size:
+        11px;
+
+      font-weight:
+        900;
+
+    }
+
+    .content-title span {
+
+      color:
+        var(--green);
+
+    }
+
+    .tools {
+
+      display:
+        flex;
+
+      gap:
+        6px;
+
+      flex-wrap:
+        wrap;
+
+    }
+
+    .conversation {
+
+      padding:
+        8px;
+
+      background:
+        #080d0a;
+
+    }
+
+    .window {
+
+      overflow:
+        hidden;
+
+      border:
+        1px solid
+        rgba(
+          67,
+          255,
+          152,
+          .10
+        );
+
+      border-radius:
+        12px;
+
+      background:
+        #202225;
+
+    }
+
+    .channel {
+
       display:
         flex;
 
@@ -1691,31 +2712,73 @@ function createTranscriptPage(
       gap:
         8px;
 
+      min-height:
+        37px;
+
+      padding:
+        8px 11px;
+
+      border-bottom:
+        1px solid
+        rgba(
+          255,
+          255,
+          255,
+          .06
+        );
+
+      background:
+        #1b1d20;
+
       color:
-        var(--green-soft);
+        #b5bac1;
 
       font-size:
-        11px;
+        10px;
+
+    }
+
+    .channel-symbol {
+
+      color:
+        #8f979f;
+
+      font-size:
+        15px;
+
+    }
+
+    .channel-name {
+
+      color:
+        #f2f3f5;
 
       font-weight:
-        900;
+        850;
+
     }
 
-    .viewer-actions {
-      display:
-        flex;
+    .channel-id {
 
-      gap:
-        7px;
+      overflow:
+        hidden;
 
-      flex-wrap:
-        wrap;
+      text-overflow:
+        ellipsis;
 
-      justify-content:
-        flex-end;
+      white-space:
+        nowrap;
+
+      color:
+        #6c737b;
+
+      font-size:
+        8px;
+
     }
 
-    iframe {
+    .frame {
+
       display:
         block;
 
@@ -1726,16 +2789,43 @@ function createTranscriptPage(
         74vh;
 
       min-height:
-        620px;
+        650px;
 
       border:
         0;
 
       background:
         #202225;
+
+    }
+
+    .window-footer {
+
+      padding:
+        8px 10px;
+
+      border-top:
+        1px solid
+        rgba(
+          255,
+          255,
+          255,
+          .05
+        );
+
+      background:
+        #1b1d20;
+
+      color:
+        #6e757d;
+
+      font-size:
+        8px;
+
     }
 
     .footer {
+
       display:
         flex;
 
@@ -1743,93 +2833,112 @@ function createTranscriptPage(
         space-between;
 
       gap:
-        12px;
+        10px;
 
       margin-top:
-        12px;
+        9px;
 
       color:
-        #4e715c;
+        #50675a;
 
       font-size:
-        10px;
+        8px;
 
       flex-wrap:
         wrap;
+
     }
 
     .footer strong {
+
       color:
-        #78ae8b;
+        #79a488;
+
     }
 
-    @media (max-width: 850px) {
+    @media (
+      max-width: 850px
+    ) {
+
       .hero {
+
         grid-template-columns:
           1fr;
+
       }
 
-      .stats {
-        grid-template-columns:
-          1fr;
-      }
-
-      iframe {
-        height:
-          76vh;
-
-        min-height:
-          520px;
-      }
     }
 
-    @media (max-width: 650px) {
+    @media (
+      max-width: 620px
+    ) {
+
       .page {
+
         width:
           calc(
-            100% - 14px
+            100% - 12px
           );
 
         padding-top:
-          7px;
+          6px;
+
       }
 
       .topbar {
+
+        position:
+          relative;
+
         top:
-          6px;
+          auto;
 
         align-items:
           flex-start;
 
         flex-direction:
           column;
+
       }
 
-      .right {
+      .content-head {
+
+        align-items:
+          flex-start;
+
+        flex-direction:
+          column;
+
+      }
+
+      .tools {
+
         justify-content:
           flex-start;
+
       }
 
-      .hero-main {
+      .conversation {
+
         padding:
-          19px;
+          5px;
+
       }
 
-      .viewer-head {
-        align-items:
-          flex-start;
+      .frame {
 
-        flex-direction:
-          column;
+        min-height:
+          500px;
+
+        height:
+          72vh;
+
       }
 
-      .viewer-actions {
-        justify-content:
-          flex-start;
-      }
     }
 
   </style>
+
 </head>
 
 <body>
@@ -1845,6 +2954,7 @@ function createTranscriptPage(
         </div>
 
         <div>
+
           <p class="eyebrow">
             GHOST SYNDICATE
           </p>
@@ -1852,15 +2962,19 @@ function createTranscriptPage(
           <p class="brand-title">
             Central de Transcripts
           </p>
+
         </div>
 
       </div>
 
-      <div class="right">
+      <div class="actions">
 
-        <div class="pill">
+        <div class="status">
+
           <span class="dot"></span>
+
           Histórico arquivado
+
         </div>
 
         <button
@@ -1879,16 +2993,16 @@ function createTranscriptPage(
 
       <div class="hero-main">
 
-        <p class="kicker">
+        <p class="hero-kicker">
           Transcript oficial
         </p>
 
         <h1>
-          Registro do atendimento.
+          Histórico do atendimento.
         </h1>
 
-        <p class="lead">
-          Histórico preservado de uma conversa
+        <p>
+          Registro preservado da conversa
           realizada pela Central de Atendimento
           da Ghost Syndicate.
         </p>
@@ -1898,82 +3012,48 @@ function createTranscriptPage(
       <aside class="hero-id">
 
         <div>
-          <p class="id-label">
-            Identificador do transcript
+
+          <p class="label">
+            Identificador
           </p>
 
           <p class="id">
             #${safeId}
           </p>
+
         </div>
 
-        <div class="status">
-          <strong>
-            🟢 ARQUIVADO
-          </strong>
+        <div class="archive">
 
-          <br>
+          <span>
+            🟢
+          </span>
 
-          Histórico disponível para consulta.
+          <span>
+            Histórico disponível para consulta.
+          </span>
+
         </div>
 
       </aside>
 
     </section>
 
-    <section class="stats">
+    <section class="content">
 
-      <article class="stat">
+      <header class="content-head">
 
-        <p class="stat-label">
-          Sistema
-        </p>
+        <h2 class="content-title">
 
-        <p class="stat-value">
-          👻 Ghost Syndicate
-        </p>
+          <span>
+            💬
+          </span>
 
-      </article>
+          Conversa do atendimento
 
-      <article class="stat">
+        </h2>
 
-        <p class="stat-label">
-          Origem
-        </p>
-
-        <p class="stat-value">
-          🎫 Central de Atendimento
-        </p>
-
-      </article>
-
-      <article class="stat">
-
-        <p class="stat-label">
-          Estado
-        </p>
-
-        <p class="stat-value">
-          ✅ Histórico arquivado
-        </p>
-
-      </article>
-
-    </section>
-
-    <section
-      id="viewer"
-      class="viewer"
-    >
-
-      <header class="viewer-head">
-
-        <div class="viewer-name">
-          <span>📜</span>
-          Transcript
-        </div>
-
-        <div class="viewer-actions">
+        <div class="tools">
 
           <a
             class="button"
@@ -1981,7 +3061,7 @@ function createTranscriptPage(
             target="_blank"
             rel="noopener noreferrer"
           >
-            ↗ Abrir original
+            ↗ Original
           </a>
 
           <button
@@ -1996,19 +3076,56 @@ function createTranscriptPage(
 
       </header>
 
-      <iframe
-        id="frame"
-        src="${rawUrl}"
-        title="Transcript do atendimento"
-        loading="eager"
-        referrerpolicy="no-referrer"
-      ></iframe>
+      <div class="conversation">
+
+        <div
+          id="viewer"
+          class="window"
+        >
+
+          <div class="channel">
+
+            <span class="channel-symbol">
+              #
+            </span>
+
+            <span class="channel-name">
+              Transcript
+            </span>
+
+            <span class="channel-id">
+              #${safeId}
+            </span>
+
+          </div>
+
+          <iframe
+            id="frame"
+            class="frame"
+            src="${rawUrl}"
+            title="Transcript Ghost Syndicate"
+            loading="eager"
+            referrerpolicy="no-referrer"
+          ></iframe>
+
+          <div class="window-footer">
+
+            📜 Histórico preservado da
+            Central de Atendimento
+            • Ghost Syndicate
+
+          </div>
+
+        </div>
+
+      </div>
 
     </section>
 
     <footer class="footer">
 
       <span>
+
         Ghost Syndicate
         •
         <strong>Organização</strong>
@@ -2016,6 +3133,7 @@ function createTranscriptPage(
         <strong>Lealdade</strong>
         •
         <strong>Resultado</strong>
+
       </span>
 
       <span>
@@ -2051,7 +3169,9 @@ function createTranscriptPage(
     copyButton.addEventListener(
       'click',
       async () => {
+
         try {
+
           await navigator.clipboard.writeText(
             transcriptId,
           );
@@ -2060,350 +3180,106 @@ function createTranscriptPage(
             copyButton.textContent;
 
           copyButton.textContent =
-            '✓ ID copiado';
+            '✓ Copiado';
 
           setTimeout(
             () => {
+
               copyButton.textContent =
                 oldText;
+
             },
-            1800,
+            1700,
           );
+
         } catch {
+
           copyButton.textContent =
-            '✕ Não foi possível copiar';
+            '✕ Falhou';
 
           setTimeout(
             () => {
+
               copyButton.textContent =
                 '⧉ Copiar ID';
+
             },
-            1800,
+            1700,
           );
+
         }
+
       },
     );
 
     fullscreenButton.addEventListener(
       'click',
       async () => {
+
         try {
+
           if (
             document.fullscreenElement
           ) {
+
             await document.exitFullscreen();
 
             return;
+
           }
 
           await viewer.requestFullscreen();
+
         } catch {
+
           fullscreenButton.textContent =
             '✕ Indisponível';
 
           setTimeout(
             () => {
+
               fullscreenButton.textContent =
                 '⛶ Tela cheia';
+
             },
-            1800,
+            1700,
           );
+
         }
+
       },
     );
 
   </script>
 
 </body>
+
 </html>
 `;
 }
 
 /* =========================================================
-   TRANSCRIPT ERROR PAGE
-========================================================= */
-
-function createTranscriptErrorPage(
-  title: string,
-  message: string,
-): string {
-  return `
-<!doctype html>
-<html lang="pt-BR">
-<head>
-
-  <meta charset="utf-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1"
-  >
-
-  <meta
-    name="theme-color"
-    content="#04100a"
-  >
-
-  <title>
-    ${escapeHtml(title)}
-    • Ghost Syndicate
-  </title>
-
-  <style>
-
-    :root {
-      color-scheme:
-        dark;
-    }
-
-    * {
-      box-sizing:
-        border-box;
-    }
-
-    body {
-      margin:
-        0;
-
-      min-height:
-        100vh;
-
-      display:
-        grid;
-
-      place-items:
-        center;
-
-      padding:
-        20px;
-
-      color:
-        #eafff2;
-
-      background:
-        radial-gradient(
-          circle at 50% 0%,
-          rgba(
-            67,
-            255,
-            152,
-            .10
-          ),
-          transparent 38%
-        ),
-        #020604;
-
-      font-family:
-        Inter,
-        system-ui,
-        sans-serif;
-    }
-
-    .card {
-      width:
-        min(
-          620px,
-          100%
-        );
-
-      padding:
-        34px;
-
-      border:
-        1px solid
-        rgba(
-          67,
-          255,
-          152,
-          .18
-        );
-
-      border-radius:
-        23px;
-
-      background:
-        linear-gradient(
-          180deg,
-          rgba(
-            7,
-            23,
-            14,
-            .97
-          ),
-          rgba(
-            3,
-            11,
-            7,
-            .97
-          )
-        );
-
-      box-shadow:
-        0 30px 110px
-        rgba(
-          0,
-          0,
-          0,
-          .35
-        );
-    }
-
-    .logo {
-      width:
-        54px;
-
-      height:
-        54px;
-
-      display:
-        grid;
-
-      place-items:
-        center;
-
-      margin-bottom:
-        20px;
-
-      border:
-        1px solid
-        rgba(
-          67,
-          255,
-          152,
-          .22
-        );
-
-      border-radius:
-        16px;
-
-      background:
-        rgba(
-          67,
-          255,
-          152,
-          .05
-        );
-
-      font-size:
-        25px;
-    }
-
-    .eyebrow {
-      margin:
-        0 0 7px;
-
-      color:
-        #43ff98;
-
-      font-size:
-        10px;
-
-      font-weight:
-        900;
-
-      letter-spacing:
-        .17em;
-
-      text-transform:
-        uppercase;
-    }
-
-    h1 {
-      margin:
-        0;
-
-      font-size:
-        30px;
-
-      letter-spacing:
-        -.045em;
-    }
-
-    p {
-      color:
-        #7da38c;
-
-      line-height:
-        1.7;
-    }
-
-    .info {
-      margin-top:
-        20px;
-
-      padding:
-        13px;
-
-      border:
-        1px solid
-        rgba(
-          67,
-          255,
-          152,
-          .14
-        );
-
-      border-radius:
-        13px;
-
-      background:
-        rgba(
-          67,
-          255,
-          152,
-          .025
-        );
-
-      color:
-        #93bda0;
-    }
-
-  </style>
-
-</head>
-
-<body>
-
-  <main class="card">
-
-    <div class="logo">
-      👻
-    </div>
-
-    <p class="eyebrow">
-      Ghost Syndicate
-    </p>
-
-    <h1>
-      ${escapeHtml(title)}
-    </h1>
-
-    <p>
-      ${escapeHtml(message)}
-    </p>
-
-    <div class="info">
-      📜 Central de Transcripts
-    </div>
-
-  </main>
-
-</body>
-</html>
-`;
-}
-
-/* =========================================================
-   DASHBOARD
+   RANKING PAGE
 ========================================================= */
 
 app.get(
-  '/',
+  '/ranking',
   (
     _req: Request,
     res: Response,
   ) => {
-    res.type('html').send(`
+
+    res
+      .type('html')
+      .send(
+        createRankingPage(),
+      );
+
+  },
+);
+
+function createRankingPage(): string {
+  return `
 <!doctype html>
 
 <html lang="pt-BR">
@@ -2419,7 +3295,7 @@ app.get(
 
   <meta
     name="theme-color"
-    content="#06130d"
+    content="#030806"
   >
 
   <meta
@@ -2428,14 +3304,56 @@ app.get(
   >
 
   <title>
-    Ghost Syndicate
+    Ranking de Voz • Ghost Syndicate
   </title>
 
   <style>
 
     :root {
+
       color-scheme:
         dark;
+
+      --bg:
+        #030806;
+
+      --panel:
+        #07100a;
+
+      --panel-2:
+        #0a160e;
+
+      --border:
+        rgba(
+          67,
+          255,
+          152,
+          .14
+        );
+
+      --strong:
+        rgba(
+          67,
+          255,
+          152,
+          .30
+        );
+
+      --green:
+        #43ff98;
+
+      --soft:
+        #aaffc9;
+
+      --text:
+        #effff5;
+
+      --muted:
+        #769281;
+
+      --muted-2:
+        #526c5d;
+
     }
 
     * {
@@ -2450,37 +3368,21 @@ app.get(
 
       min-height:
         100%;
+
+      background:
+        var(--bg);
     }
 
     body {
+
       min-height:
         100vh;
 
-      background:
-        radial-gradient(
-          circle at 15% 0%,
-          rgba(
-            53,
-            211,
-            154,
-            .12
-          ),
-          transparent 30%
-        ),
-        radial-gradient(
-          circle at 90% 20%,
-          rgba(
-            31,
-            180,
-            108,
-            .06
-          ),
-          transparent 28%
-        ),
-        #050a07;
+      overflow-x:
+        hidden;
 
       color:
-        #f5fff8;
+        var(--text);
 
       font-family:
         Inter,
@@ -2490,9 +3392,37 @@ app.get(
         BlinkMacSystemFont,
         "Segoe UI",
         sans-serif;
+
+      background:
+
+        radial-gradient(
+          circle at 10% 0%,
+          rgba(
+            67,
+            255,
+            152,
+            .09
+          ),
+          transparent 30%
+        ),
+
+        radial-gradient(
+          circle at 90% 15%,
+          rgba(
+            67,
+            255,
+            152,
+            .04
+          ),
+          transparent 25%
+        ),
+
+        var(--bg);
+
     }
 
     body::before {
+
       content:
         "";
 
@@ -2505,35 +3435,65 @@ app.get(
       pointer-events:
         none;
 
+      opacity:
+        .012;
+
       background:
-        linear-gradient(
-          125deg,
-          transparent 30%,
+        repeating-linear-gradient(
+          180deg,
           rgba(
-            53,
-            211,
-            154,
-            .025
-          ) 50%,
-          transparent 70%
+            255,
+            255,
+            255,
+            .25
+          ) 0,
+          rgba(
+            255,
+            255,
+            255,
+            .25
+          ) 1px,
+          transparent 1px,
+          transparent 7px
         );
+
     }
 
-    main {
+    .page {
+
+      position:
+        relative;
+
+      z-index:
+        1;
+
       width:
         min(
           1180px,
-          calc(100% - 40px)
+          calc(
+            100% - 28px
+          )
         );
 
       margin:
         0 auto;
 
       padding:
-        42px 0 70px;
+        15px 0 30px;
+
     }
 
-    .topbar {
+    .header {
+
+      position:
+        sticky;
+
+      top:
+        10px;
+
+      z-index:
+        30;
+
       display:
         flex;
 
@@ -2544,13 +3504,38 @@ app.get(
         space-between;
 
       gap:
-        20px;
+        15px;
+
+      padding:
+        10px 13px;
 
       margin-bottom:
-        42px;
+        13px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        16px;
+
+      background:
+        rgba(
+          5,
+          13,
+          8,
+          .94
+        );
+
+      backdrop-filter:
+        blur(
+          16px
+        );
+
     }
 
     .brand {
+
       display:
         flex;
 
@@ -2558,15 +3543,17 @@ app.get(
         center;
 
       gap:
-        14px;
+        10px;
+
     }
 
     .logo {
+
       width:
-        54px;
+        42px;
 
       height:
-        54px;
+        42px;
 
       display:
         grid;
@@ -2574,70 +3561,684 @@ app.get(
       place-items:
         center;
 
-      border-radius:
-        17px;
-
       border:
         1px solid
-        rgba(
-          53,
-          211,
-          154,
-          .22
-        );
+        var(--strong);
+
+      border-radius:
+        13px;
 
       background:
-        linear-gradient(
-          135deg,
-          #123c28,
-          #092117
-        );
-
-      box-shadow:
-        0 18px 50px
-        rgba(
-          53,
-          211,
-          154,
-          .16
-        );
+        #0b1b11;
 
       font-size:
-        25px;
+        21px;
+
     }
 
     .eyebrow {
+
       margin:
-        0 0 5px;
+        0 0 2px;
 
       color:
-        #73a98b;
+        var(--green);
 
       font-size:
-        11px;
+        8px;
 
       font-weight:
-        800;
+        950;
 
       letter-spacing:
-        .17em;
+        .20em;
 
       text-transform:
         uppercase;
+
     }
 
-    .brand h1 {
+    .title {
+
       margin:
         0;
 
       font-size:
-        23px;
+        14px;
 
-      letter-spacing:
-        -.035em;
+      font-weight:
+        900;
+
     }
 
-    .status {
+    .header-right {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      gap:
+        7px;
+
+      flex-wrap:
+        wrap;
+
+      justify-content:
+        flex-end;
+
+    }
+
+    .pill {
+
+      display:
+        inline-flex;
+
+      align-items:
+        center;
+
+      gap:
+        7px;
+
+      min-height:
+        31px;
+
+      padding:
+        7px 10px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        999px;
+
+      background:
+        #07120b;
+
+      color:
+        #84a18e;
+
+      font-size:
+        9px;
+
+      font-weight:
+        850;
+
+    }
+
+    .live-dot {
+
+      width:
+        7px;
+
+      height:
+        7px;
+
+      border-radius:
+        50%;
+
+      background:
+        var(--green);
+
+      box-shadow:
+        0 0 12px
+        rgba(
+          67,
+          255,
+          152,
+          .85
+        );
+
+      animation:
+        pulse
+        1.7s
+        ease-in-out
+        infinite;
+
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+
+        opacity:
+          .60;
+
+        transform:
+          scale(
+            .9
+          );
+
+      }
+
+      50% {
+
+        opacity:
+          1;
+
+        transform:
+          scale(
+            1.08
+          );
+
+      }
+
+    }
+
+    .refresh {
+
+      min-height:
+        31px;
+
+      display:
+        inline-flex;
+
+      align-items:
+        center;
+
+      padding:
+        7px 10px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        9px;
+
+      background:
+        #07120b;
+
+      color:
+        var(--soft);
+
+      font:
+        800 9px/1
+        inherit;
+
+    }
+
+    .hero {
+
+      display:
+        grid;
+
+      grid-template-columns:
+        minmax(
+          0,
+          1fr
+        )
+        260px;
+
+      gap:
+        12px;
+
+      margin-bottom:
+        12px;
+
+    }
+
+    .hero-main,
+    .leader-card {
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        18px;
+
+      background:
+        linear-gradient(
+          135deg,
+          rgba(
+            10,
+            25,
+            15,
+            .97
+          ),
+          rgba(
+            5,
+            12,
+            8,
+            .98
+          )
+        );
+
+    }
+
+    .hero-main {
+
+      padding:
+        24px;
+
+    }
+
+    .hero-kicker {
+
+      margin:
+        0 0 7px;
+
+      color:
+        var(--green);
+
+      font-size:
+        9px;
+
+      font-weight:
+        950;
+
+      letter-spacing:
+        .18em;
+
+      text-transform:
+        uppercase;
+
+    }
+
+    .hero-main h2 {
+
+      margin:
+        0;
+
+      font-size:
+        clamp(
+          32px,
+          5vw,
+          54px
+        );
+
+      line-height:
+        .98;
+
+      letter-spacing:
+        -.06em;
+
+    }
+
+    .hero-main p {
+
+      max-width:
+        720px;
+
+      margin:
+        12px 0 0;
+
+      color:
+        var(--muted);
+
+      font-size:
+        12px;
+
+      line-height:
+        1.65;
+
+    }
+
+    .leader-card {
+
+      padding:
+        18px;
+
+    }
+
+    .small-label {
+
+      margin:
+        0 0 7px;
+
+      color:
+        var(--muted-2);
+
+      font-size:
+        8px;
+
+      font-weight:
+        950;
+
+      letter-spacing:
+        .15em;
+
+      text-transform:
+        uppercase;
+
+    }
+
+    .leader-time {
+
+      color:
+        var(--soft);
+
+      font:
+        900 27px/1
+        ui-monospace,
+        monospace;
+
+    }
+
+    .leader-name {
+
+      margin-top:
+        8px;
+
+      font-size:
+        13px;
+
+      font-weight:
+        900;
+
+      overflow:
+        hidden;
+
+      text-overflow:
+        ellipsis;
+
+      white-space:
+        nowrap;
+
+    }
+
+    .leader-meta {
+
+      margin-top:
+        16px;
+
+      padding:
+        10px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        11px;
+
+      background:
+        rgba(
+          67,
+          255,
+          152,
+          .025
+        );
+
+      color:
+        #83a08d;
+
+      font-size:
+        9px;
+
+      line-height:
+        1.55;
+
+    }
+
+    .podium {
+
+      display:
+        grid;
+
+      grid-template-columns:
+        repeat(
+          3,
+          minmax(
+            0,
+            1fr
+          )
+        );
+
+      align-items:
+        end;
+
+      gap:
+        12px;
+
+      margin-bottom:
+        12px;
+
+    }
+
+    .podium-card {
+
+      min-height:
+        188px;
+
+      padding:
+        17px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        17px;
+
+      background:
+        linear-gradient(
+          180deg,
+          rgba(
+            9,
+            22,
+            14,
+            .96
+          ),
+          rgba(
+            5,
+            12,
+            8,
+            .98
+          )
+        );
+
+      transition:
+        transform
+        .2s
+        ease,
+        border-color
+        .2s
+        ease;
+
+    }
+
+    .podium-card:hover {
+
+      transform:
+        translateY(
+          -3px
+        );
+
+      border-color:
+        var(--strong);
+
+    }
+
+    .first {
+
+      min-height:
+        222px;
+
+      border-color:
+        var(--strong);
+
+      box-shadow:
+        0 0 50px
+        rgba(
+          67,
+          255,
+          152,
+          .04
+        );
+
+    }
+
+    .rank-icon {
+
+      font-size:
+        24px;
+
+    }
+
+    .rank-label {
+
+      margin-top:
+        9px;
+
+      color:
+        var(--muted-2);
+
+      font-size:
+        8px;
+
+      font-weight:
+        950;
+
+      letter-spacing:
+        .14em;
+
+      text-transform:
+        uppercase;
+
+    }
+
+    .rank-name {
+
+      margin-top:
+        8px;
+
+      font-size:
+        14px;
+
+      font-weight:
+        900;
+
+      white-space:
+        nowrap;
+
+      overflow:
+        hidden;
+
+      text-overflow:
+        ellipsis;
+
+    }
+
+    .rank-time {
+
+      margin-top:
+        9px;
+
+      color:
+        var(--soft);
+
+      font:
+        900 18px/1.2
+        ui-monospace,
+        monospace;
+
+    }
+
+    .rank-live {
+
+      display:
+        inline-flex;
+
+      align-items:
+        center;
+
+      gap:
+        5px;
+
+      margin-top:
+        11px;
+
+      padding:
+        5px 7px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        999px;
+
+      background:
+        rgba(
+          67,
+          255,
+          152,
+          .025
+        );
+
+      color:
+        #80a98f;
+
+      font-size:
+        8px;
+
+      font-weight:
+        900;
+
+    }
+
+    .panel {
+
+      overflow:
+        hidden;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        18px;
+
+      background:
+        var(--panel);
+
+      box-shadow:
+        0 25px 90px
+        rgba(
+          0,
+          0,
+          0,
+          .25
+        );
+
+    }
+
+    .panel-head {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        space-between;
+
+      gap:
+        12px;
+
+      padding:
+        13px 15px;
+
+      border-bottom:
+        1px solid
+        var(--border);
+
+      background:
+        var(--panel-2);
+
+    }
+
+    .panel-title {
+
+      margin:
+        0;
+
       display:
         flex;
 
@@ -2647,69 +4248,1592 @@ app.get(
       gap:
         8px;
 
+      font-size:
+        11px;
+
+      font-weight:
+        900;
+
+    }
+
+    .panel-title span {
+
+      color:
+        var(--green);
+
+    }
+
+    .updated {
+
+      color:
+        var(--muted-2);
+
+      font-size:
+        8px;
+
+    }
+
+    .list {
+
+      display:
+        grid;
+
+      gap:
+        1px;
+
+    }
+
+    .row {
+
+      display:
+        grid;
+
+      grid-template-columns:
+        52px
+        minmax(
+          0,
+          1fr
+        )
+        minmax(
+          180px,
+          .8fr
+        )
+        auto;
+
+      align-items:
+        center;
+
+      gap:
+        13px;
+
+      min-height:
+        75px;
+
       padding:
-        9px 14px;
+        11px 14px;
+
+      background:
+        #09100c;
+
+      transition:
+        background
+        .18s
+        ease;
+
+    }
+
+    .row:hover {
+
+      background:
+        #0c1610;
+
+    }
+
+    .row.active {
+
+      background:
+        linear-gradient(
+          90deg,
+          rgba(
+            67,
+            255,
+            152,
+            .035
+          ),
+          #09100c
+        );
+
+    }
+
+    .position {
+
+      width:
+        37px;
+
+      height:
+        37px;
+
+      display:
+        grid;
+
+      place-items:
+        center;
 
       border:
         1px solid
-        #1d3528;
+        var(--border);
+
+      border-radius:
+        11px;
+
+      background:
+        #0b1710;
+
+      color:
+        #a1b9aa;
+
+      font-size:
+        11px;
+
+      font-weight:
+        950;
+
+    }
+
+    .top-position {
+
+      color:
+        var(--green);
+
+      border-color:
+        var(--strong);
+
+    }
+
+    .member {
+
+      min-width:
+        0;
+
+    }
+
+    .member-name {
+
+      overflow:
+        hidden;
+
+      text-overflow:
+        ellipsis;
+
+      white-space:
+        nowrap;
+
+      font-size:
+        12px;
+
+      font-weight:
+        850;
+
+    }
+
+    .member-id {
+
+      margin-top:
+        3px;
+
+      overflow:
+        hidden;
+
+      text-overflow:
+        ellipsis;
+
+      white-space:
+        nowrap;
+
+      color:
+        var(--muted-2);
+
+      font:
+        8px
+        ui-monospace,
+        monospace;
+
+    }
+
+    .bar-area {
+
+      min-width:
+        0;
+
+    }
+
+    .bar-top {
+
+      display:
+        flex;
+
+      justify-content:
+        space-between;
+
+      gap:
+        8px;
+
+      margin-bottom:
+        6px;
+
+      color:
+        #66806f;
+
+      font-size:
+        8px;
+
+    }
+
+    .bar {
+
+      width:
+        100%;
+
+      height:
+        6px;
+
+      overflow:
+        hidden;
 
       border-radius:
         999px;
 
       background:
-        rgba(
-          6,
-          17,
-          11,
-          .72
-        );
+        #101a14;
 
-      color:
-        #829d8c;
-
-      font-size:
-        12px;
     }
 
-    .status-dot {
-      width:
-        8px;
+    .bar-fill {
 
       height:
-        8px;
+        100%;
 
       border-radius:
-        50%;
+        inherit;
 
       background:
-        #35d39a;
+        linear-gradient(
+          90deg,
+          #1f9f60,
+          #43ff98
+        );
 
       box-shadow:
-        0 0 16px
+        0 0 15px
         rgba(
-          53,
-          211,
-          154,
-          .7
+          67,
+          255,
+          152,
+          .23
         );
+
+      transition:
+        width
+        .4s
+        ease;
+
     }
 
-    .hero {
+    .time {
+
+      min-width:
+        115px;
+
+      text-align:
+        right;
+
+      color:
+        var(--soft);
+
+      font:
+        900 12px/1.2
+        ui-monospace,
+        monospace;
+
+    }
+
+    .live {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        flex-end;
+
+      gap:
+        5px;
+
+      margin-top:
+        5px;
+
+      color:
+        #78a58a;
+
+      font:
+        800 8px
+        inherit;
+
+    }
+
+    .empty {
+
+      padding:
+        35px;
+
+      text-align:
+        center;
+
+      color:
+        var(--muted);
+
+      font-size:
+        11px;
+
+      line-height:
+        1.6;
+
+    }
+
+    .error {
+
+      color:
+        #d48a8a;
+
+    }
+
+    .footer {
+
+      display:
+        flex;
+
+      justify-content:
+        space-between;
+
+      gap:
+        10px;
+
+      margin-top:
+        9px;
+
+      color:
+        #4f6859;
+
+      font-size:
+        8px;
+
+      flex-wrap:
+        wrap;
+
+    }
+
+    .footer strong {
+      color:
+        #78a58a;
+    }
+
+    @media (
+      max-width: 900px
+    ) {
+
+      .hero {
+
+        grid-template-columns:
+          1fr;
+
+      }
+
+      .podium {
+
+        grid-template-columns:
+          1fr;
+
+      }
+
+      .podium-card,
+      .first {
+
+        min-height:
+          170px;
+
+      }
+
+      .row {
+
+        grid-template-columns:
+          45px
+          minmax(
+            0,
+            1fr
+          )
+          auto;
+
+      }
+
+      .bar-area {
+
+        display:
+          none;
+
+      }
+
+    }
+
+    @media (
+      max-width: 620px
+    ) {
+
+      .page {
+
+        width:
+          calc(
+            100% - 12px
+          );
+
+        padding-top:
+          6px;
+
+      }
+
+      .header {
+
+        position:
+          relative;
+
+        top:
+          auto;
+
+        align-items:
+          flex-start;
+
+        flex-direction:
+          column;
+
+      }
+
+      .header-right {
+
+        justify-content:
+          flex-start;
+
+      }
+
+      .panel-head {
+
+        align-items:
+          flex-start;
+
+        flex-direction:
+          column;
+
+      }
+
+      .row {
+
+        grid-template-columns:
+          35px
+          minmax(
+            0,
+            1fr
+          )
+          auto;
+
+        gap:
+          8px;
+
+        padding:
+          10px;
+
+      }
+
+      .position {
+
+        width:
+          31px;
+
+        height:
+          31px;
+
+      }
+
+      .time {
+
+        min-width:
+          auto;
+
+        font-size:
+          10px;
+
+      }
+
+      .member-name {
+
+        font-size:
+          11px;
+
+      }
+
+      .footer {
+
+        flex-direction:
+          column;
+
+      }
+
+    }
+
+  </style>
+
+</head>
+
+<body>
+
+  <main class="page">
+
+    <header class="header">
+
+      <div class="brand">
+
+        <div class="logo">
+          👻
+        </div>
+
+        <div>
+
+          <p class="eyebrow">
+            GHOST SYNDICATE
+          </p>
+
+          <p class="title">
+            Ranking de Voz
+          </p>
+
+        </div>
+
+      </div>
+
+      <div class="header-right">
+
+        <div class="pill">
+
+          <span class="live-dot"></span>
+
+          Atualização em tempo real
+
+        </div>
+
+        <div
+          id="refresh"
+          class="refresh"
+        >
+          Monitorando
+        </div>
+
+      </div>
+
+    </header>
+
+    <section class="hero">
+
+      <div class="hero-main">
+
+        <p class="hero-kicker">
+          Atividade da equipe
+        </p>
+
+        <h2>
+          Ranking de horas em call.
+        </h2>
+
+        <p>
+          O tempo é contabilizado automaticamente
+          pelas sessões de voz. Membros atualmente
+          em call continuam acumulando tempo em
+          tempo real.
+        </p>
+
+      </div>
+
+      <aside class="leader-card">
+
+        <p class="small-label">
+          Líder atual
+        </p>
+
+        <div
+          id="leaderTime"
+          class="leader-time"
+        >
+          00:00:00
+        </div>
+
+        <div
+          id="leaderName"
+          class="leader-name"
+        >
+          Carregando...
+        </div>
+
+        <div
+          id="leaderMeta"
+          class="leader-meta"
+        >
+          Carregando ranking...
+        </div>
+
+      </aside>
+
+    </section>
+
+    <section
+      id="podium"
+      class="podium"
+    >
+
+      <article class="podium-card">
+        <div class="empty">
+          Carregando...
+        </div>
+      </article>
+
+      <article class="podium-card first">
+        <div class="empty">
+          Carregando...
+        </div>
+      </article>
+
+      <article class="podium-card">
+        <div class="empty">
+          Carregando...
+        </div>
+      </article>
+
+    </section>
+
+    <section class="panel">
+
+      <header class="panel-head">
+
+        <h3 class="panel-title">
+
+          <span>
+            🎙️
+          </span>
+
+          Ranking completo
+
+        </h3>
+
+        <span
+          id="updated"
+          class="updated"
+        >
+          Aguardando atualização...
+        </span>
+
+      </header>
+
+      <div
+        id="list"
+        class="list"
+      >
+
+        <div class="empty">
+          Carregando ranking...
+        </div>
+
+      </div>
+
+    </section>
+
+    <footer class="footer">
+
+      <span>
+
+        Ghost Syndicate
+        •
+        <strong>Organização</strong>
+        •
+        <strong>Lealdade</strong>
+        •
+        <strong>Resultado</strong>
+
+      </span>
+
+      <span>
+        Voice Tracker
+      </span>
+
+    </footer>
+
+  </main>
+
+  <script>
+
+    let rankingData = [];
+
+    function escapeHtml(
+      value,
+    ) {
+
+      return String(
+        value ?? '',
+      )
+        .replaceAll(
+          '&',
+          '&amp;',
+        )
+        .replaceAll(
+          '<',
+          '&lt;',
+        )
+        .replaceAll(
+          '>',
+          '&gt;',
+        )
+        .replaceAll(
+          '"',
+          '&quot;',
+        )
+        .replaceAll(
+          "'",
+          '&#039;',
+        );
+
+    }
+
+    function formatDuration(
+      seconds,
+    ) {
+
+      const safe =
+        Math.max(
+          0,
+          Math.floor(
+            Number(
+              seconds || 0,
+            ),
+          ),
+        );
+
+      const hours =
+        Math.floor(
+          safe /
+            3600,
+        );
+
+      const minutes =
+        Math.floor(
+          (
+            safe %
+            3600
+          ) /
+            60,
+        );
+
+      const secs =
+        safe %
+        60;
+
+      return (
+        hours +
+        'h ' +
+        minutes +
+        'min ' +
+        secs +
+        's'
+      );
+
+    }
+
+    function formatClock(
+      seconds,
+    ) {
+
+      const safe =
+        Math.max(
+          0,
+          Math.floor(
+            Number(
+              seconds || 0,
+            ),
+          ),
+        );
+
+      const hours =
+        Math.floor(
+          safe /
+            3600,
+        )
+          .toString()
+          .padStart(
+            2,
+            '0',
+          );
+
+      const minutes =
+        Math.floor(
+          (
+            safe %
+            3600
+          ) /
+            60,
+        )
+          .toString()
+          .padStart(
+            2,
+            '0',
+          );
+
+      const secs =
+        (
+          safe %
+          60
+        )
+          .toString()
+          .padStart(
+            2,
+            '0',
+          );
+
+      return (
+        hours +
+        ':' +
+        minutes +
+        ':' +
+        secs
+      );
+
+    }
+
+    function renderSummary(
+      ranking,
+    ) {
+
+      const leader =
+        ranking[0];
+
+      const leaderTime =
+        document.getElementById(
+          'leaderTime',
+        );
+
+      const leaderName =
+        document.getElementById(
+          'leaderName',
+        );
+
+      const leaderMeta =
+        document.getElementById(
+          'leaderMeta',
+        );
+
+      if (
+        !leader
+      ) {
+
+        leaderTime.textContent =
+          '00:00:00';
+
+        leaderName.textContent =
+          'Ainda não há registros';
+
+        leaderMeta.textContent =
+          'Nenhum membro possui tempo registrado.';
+
+        return;
+
+      }
+
+      leaderTime.textContent =
+        formatClock(
+          leader.seconds,
+        );
+
+      leaderName.textContent =
+        leader.name;
+
+      const active =
+        ranking.filter(
+          (
+            item,
+          ) =>
+            item.active,
+        ).length;
+
+      leaderMeta.textContent =
+        ranking.length +
+        ' membros registrados • ' +
+        active +
+        ' em call agora';
+
+    }
+
+    function renderPodium(
+      ranking,
+    ) {
+
+      const container =
+        document.getElementById(
+          'podium',
+        );
+
+      const positions = [
+        {
+          index:
+            1,
+
+          emoji:
+            '🥈',
+        },
+
+        {
+          index:
+            0,
+
+          emoji:
+            '🥇',
+
+          first:
+            true,
+        },
+
+        {
+          index:
+            2,
+
+          emoji:
+            '🥉',
+        },
+      ];
+
+      container.innerHTML =
+        positions
+          .map(
+            (
+              position,
+            ) => {
+
+              const member =
+                ranking[
+                  position.index
+                ];
+
+              if (
+                !member
+              ) {
+
+                return (
+                  '<article class="podium-card ' +
+                  (
+                    position.first
+                      ? 'first'
+                      : ''
+                  ) +
+                  '">' +
+
+                  '<div class="empty">' +
+                  'Sem registro' +
+                  '</div>' +
+
+                  '</article>'
+                );
+
+              }
+
+              return (
+                '<article class="podium-card ' +
+                (
+                  position.first
+                    ? 'first'
+                    : ''
+                ) +
+                '">' +
+
+                '<div class="rank-icon">' +
+                position.emoji +
+                '</div>' +
+
+                '<div class="rank-label">' +
+                'POSIÇÃO ' +
+                member.position +
+                '</div>' +
+
+                '<div class="rank-name">' +
+                escapeHtml(
+                  member.name,
+                ) +
+                '</div>' +
+
+                '<div class="rank-time">' +
+                formatDuration(
+                  member.seconds,
+                ) +
+                '</div>' +
+
+                (
+                  member.active
+                    ? (
+                      '<div class="rank-live">' +
+                      '<span class="live-dot"></span>' +
+                      ' AO VIVO' +
+                      '</div>'
+                    )
+                    : ''
+                ) +
+
+                '</article>'
+              );
+
+            },
+          )
+          .join('');
+
+    }
+
+    function renderList(
+      ranking,
+    ) {
+
+      const list =
+        document.getElementById(
+          'list',
+        );
+
+      if (
+        ranking.length ===
+        0
+      ) {
+
+        list.innerHTML =
+          '<div class="empty">' +
+          'Ainda não existem registros de voz.' +
+          '</div>';
+
+        return;
+
+      }
+
+      const leaderSeconds =
+        Math.max(
+          1,
+          Number(
+            ranking[0]?.seconds ||
+              0,
+          ),
+        );
+
+      list.innerHTML =
+        ranking
+          .map(
+            (
+              member,
+              index,
+            ) => {
+
+              const percent =
+                Math.min(
+                  100,
+                  (
+                    member.seconds /
+                    leaderSeconds
+                  ) *
+                    100,
+                );
+
+              return (
+                '<article class="row ' +
+                (
+                  member.active
+                    ? 'active'
+                    : ''
+                ) +
+                '">' +
+
+                '<div class="position ' +
+                (
+                  index < 3
+                    ? 'top-position'
+                    : ''
+                ) +
+                '">' +
+                (
+                  index + 1
+                ) +
+                '</div>' +
+
+                '<div class="member">' +
+
+                '<div class="member-name">' +
+                escapeHtml(
+                  member.name,
+                ) +
+                '</div>' +
+
+                '<div class="member-id">' +
+                member.memberId +
+                '</div>' +
+
+                '</div>' +
+
+                '<div class="bar-area">' +
+
+                '<div class="bar-top">' +
+
+                '<span>' +
+                'TEMPO' +
+                '</span>' +
+
+                '<span>' +
+                percent.toFixed(
+                  0,
+                ) +
+                '%' +
+                '</span>' +
+
+                '</div>' +
+
+                '<div class="bar">' +
+
+                '<div ' +
+                'class="bar-fill" ' +
+                'style="width:' +
+                percent.toFixed(
+                  2,
+                ) +
+                '%">' +
+                '</div>' +
+
+                '</div>' +
+
+                '</div>' +
+
+                '<div class="time">' +
+
+                formatDuration(
+                  member.seconds,
+                ) +
+
+                (
+                  member.active
+                    ? (
+                      '<div class="live">' +
+                      '<span class="live-dot"></span>' +
+                      ' AO VIVO' +
+                      '</div>'
+                    )
+                    : ''
+                ) +
+
+                '</div>' +
+
+                '</article>'
+              );
+
+            },
+          )
+          .join('');
+
+    }
+
+    async function loadRanking() {
+
+      try {
+
+        const response =
+          await fetch(
+            '/api/ranking/live',
+            {
+              cache:
+                'no-store',
+            },
+          );
+
+        if (
+          !response.ok
+        ) {
+
+          throw new Error(
+            'Falha na API.',
+          );
+
+        }
+
+        const data =
+          await response.json();
+
+        rankingData =
+          Array.isArray(
+            data.ranking,
+          )
+            ? data.ranking
+            : [];
+
+        renderSummary(
+          rankingData,
+        );
+
+        renderPodium(
+          rankingData,
+        );
+
+        renderList(
+          rankingData,
+        );
+
+        document.getElementById(
+          'updated',
+        ).textContent =
+          'Atualizado agora';
+
+        const refresh =
+          document.getElementById(
+            'refresh',
+          );
+
+        refresh.textContent =
+          '✓ Monitorando';
+
+      } catch (
+        error
+      ) {
+
+        console.error(
+          '[RANKING PAGE]',
+          error,
+        );
+
+        document.getElementById(
+          'list',
+        ).innerHTML =
+          '<div class="empty error">' +
+          'Não foi possível atualizar o ranking.' +
+          '</div>';
+
+        document.getElementById(
+          'refresh',
+        ).textContent =
+          '⚠ Erro';
+
+      }
+
+    }
+
+    loadRanking();
+
+    /*
+     * Atualiza a cada segundo para que
+     * o tempo AO VIVO acompanhe a call.
+     */
+
+    setInterval(
+      loadRanking,
+      1000,
+    );
+
+  </script>
+
+</body>
+
+</html>
+`;
+}
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+
+app.get(
+  '/',
+  (
+    _req: Request,
+    res: Response,
+  ) => {
+
+    res
+      .type('html')
+      .send(
+        createDashboardPage(),
+      );
+
+  },
+);
+
+function createDashboardPage(): string {
+  return `
+<!doctype html>
+
+<html lang="pt-BR">
+
+<head>
+
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <meta
+    name="theme-color"
+    content="#050a07"
+  >
+
+  <meta
+    name="color-scheme"
+    content="dark"
+  >
+
+  <title>
+    Ghost Syndicate
+  </title>
+
+  <style>
+
+    :root {
+
+      color-scheme:
+        dark;
+
+      --bg:
+        #050a07;
+
+      --panel:
+        #0b120e;
+
+      --border:
+        #173024;
+
+      --green:
+        #43ff98;
+
+      --text:
+        #f0fff6;
+
+      --muted:
+        #7c9787;
+
+    }
+
+    * {
+      box-sizing:
+        border-box;
+    }
+
+    body {
+
+      margin:
+        0;
+
+      min-height:
+        100vh;
+
+      color:
+        var(--text);
+
+      background:
+        radial-gradient(
+          circle at 10% 0%,
+          rgba(
+            67,
+            255,
+            152,
+            .08
+          ),
+          transparent 30%
+        ),
+        var(--bg);
+
+      font-family:
+        Inter,
+        system-ui,
+        sans-serif;
+
+    }
+
+    main {
+
+      width:
+        min(
+          1200px,
+          calc(
+            100% - 32px
+          )
+        );
+
+      margin:
+        0 auto;
+
+      padding:
+        30px 0 50px;
+
+    }
+
+    .topbar {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        space-between;
+
+      gap:
+        18px;
+
       margin-bottom:
-        26px;
+        35px;
+
     }
 
-    .hero h2 {
-      max-width:
-        760px;
+    .brand {
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      gap:
+        12px;
+
+    }
+
+    .logo {
+
+      width:
+        50px;
+
+      height:
+        50px;
+
+      display:
+        grid;
+
+      place-items:
+        center;
+
+      border:
+        1px solid
+        rgba(
+          67,
+          255,
+          152,
+          .22
+        );
+
+      border-radius:
+        16px;
+
+      background:
+        #0d2417;
+
+      font-size:
+        24px;
+
+    }
+
+    .eyebrow {
+
+      margin:
+        0 0 3px;
+
+      color:
+        var(--green);
+
+      font-size:
+        9px;
+
+      font-weight:
+        900;
+
+      letter-spacing:
+        .18em;
+
+      text-transform:
+        uppercase;
+
+    }
+
+    .brand h1 {
 
       margin:
         0;
 
       font-size:
+        20px;
+
+    }
+
+    .online {
+
+      display:
+        inline-flex;
+
+      align-items:
+        center;
+
+      gap:
+        7px;
+
+      padding:
+        9px 13px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        999px;
+
+      color:
+        #8aa595;
+
+      font-size:
+        10px;
+
+      background:
+        rgba(
+          7,
+          18,
+          11,
+          .85
+        );
+
+    }
+
+    .online-dot {
+
+      width:
+        7px;
+
+      height:
+        7px;
+
+      border-radius:
+        50%;
+
+      background:
+        var(--green);
+
+      box-shadow:
+        0 0 12px
+        rgba(
+          67,
+          255,
+          152,
+          .85
+        );
+
+    }
+
+    .hero {
+
+      margin-bottom:
+        22px;
+
+    }
+
+    .hero h2 {
+
+      margin:
+        0;
+
+      max-width:
+        800px;
+
+      font-size:
         clamp(
-          36px,
+          34px,
           5vw,
           58px
         );
@@ -2719,81 +5843,80 @@ app.get(
 
       letter-spacing:
         -.06em;
+
     }
 
     .hero p {
+
       max-width:
-        680px;
+        720px;
 
       margin:
-        17px 0 0;
+        14px 0 0;
 
       color:
-        #7c9585;
+        var(--muted);
 
       font-size:
-        16px;
+        14px;
 
       line-height:
         1.65;
+
     }
 
-    .grid {
+    .cards {
+
       display:
         grid;
 
       grid-template-columns:
         repeat(
           3,
-          minmax(0, 1fr)
+          minmax(
+            0,
+            1fr
+          )
         );
 
       gap:
-        15px;
+        13px;
+
     }
 
     .card {
-      border:
-        1px solid
-        #1b3025;
-
-      border-radius:
-        22px;
 
       padding:
-        23px;
+        20px;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:
+        19px;
 
       background:
         linear-gradient(
           180deg,
           rgba(
-            10,
-            24,
-            16,
+            12,
+            25,
+            17,
             .94
           ),
           rgba(
-            5,
+            6,
             13,
             9,
             .98
           )
         );
 
-      box-shadow:
-        0 24px 80px
-        rgba(
-          0,
-          0,
-          0,
-          .20
-        );
-
-      backdrop-filter:
-        blur(16px);
     }
 
-    .card-head {
+    .card-top {
+
       display:
         flex;
 
@@ -2803,114 +5926,116 @@ app.get(
       justify-content:
         space-between;
 
-      gap:
-        12px;
-
       margin-bottom:
         18px;
+
     }
 
     .label {
+
       margin:
         0;
 
       color:
-        #73917f;
+        #708d7c;
 
       font-size:
-        11px;
+        9px;
 
       font-weight:
-        800;
+        900;
 
       letter-spacing:
         .13em;
 
       text-transform:
         uppercase;
-    }
 
-    .icon {
-      font-size:
-        21px;
     }
 
     .value {
+
       font-size:
-        29px;
+        28px;
 
       font-weight:
-        850;
+        900;
 
-      letter-spacing:
-        -.045em;
     }
 
-    .section {
+    .ranking {
+
       margin-top:
         16px;
+
     }
 
     .section-title {
+
       margin:
         0 0 15px;
 
       font-size:
-        19px;
+        18px;
 
-      letter-spacing:
-        -.025em;
     }
 
-    .ranking {
+    .rank-list {
+
       display:
         grid;
 
       gap:
-        9px;
+        8px;
+
     }
 
     .rank-row {
+
       display:
         grid;
 
       grid-template-columns:
-        42px 1fr auto;
+        38px
+        1fr
+        auto;
 
       align-items:
         center;
 
       gap:
-        13px;
+        10px;
 
       min-height:
-        60px;
+        55px;
 
       padding:
-        12px 14px;
+        9px 11px;
 
       border:
         1px solid
-        #173024;
+        #14271e;
 
       border-radius:
-        16px;
+        14px;
 
       background:
         rgba(
           255,
           255,
           255,
-          .015
+          .012
         );
+
     }
 
-    .rank-position {
+    .rank-pos {
+
       width:
-        32px;
+        30px;
 
       height:
-        32px;
+        30px;
 
       display:
         grid;
@@ -2919,128 +6044,115 @@ app.get(
         center;
 
       border-radius:
-        10px;
+        9px;
 
       background:
-        #0c1b13;
+        #0d1a13;
 
       color:
-        #a4cbb2;
+        #a6c4b1;
 
       font-size:
-        12px;
+        11px;
 
       font-weight:
-        850;
+        900;
+
     }
 
     .rank-name {
-      font-weight:
-        750;
-    }
-
-    .rank-subtitle {
-      margin-top:
-        3px;
-
-      color:
-        #5f7d6b;
 
       font-size:
         12px;
+
+      font-weight:
+        800;
+
+    }
+
+    .rank-sub {
+
+      margin-top:
+        2px;
+
+      color:
+        #5e7968;
+
+      font-size:
+        10px;
+
     }
 
     .rank-time {
+
       color:
-        #a1bbaa;
+        #a6bbae;
 
       font-size:
-        13px;
+        11px;
 
       font-weight:
-        700;
+        750;
 
       white-space:
         nowrap;
+
     }
 
     .empty {
-      color:
-        #607a69;
-
-      line-height:
-        1.6;
-    }
-
-    .error {
-      padding:
-        17px;
-
-      border:
-        1px solid
-        #422730;
-
-      border-radius:
-        15px;
-
-      background:
-        rgba(
-          241,
-          91,
-          107,
-          .07
-        );
 
       color:
-        #e9a3ad;
+        #637f6c;
 
-      line-height:
-        1.5;
+      font-size:
+        11px;
+
     }
 
-    .footer {
+    footer {
+
       margin-top:
-        34px;
+        30px;
 
       text-align:
         center;
 
       color:
-        #506b5b;
+        #4e6858;
 
       font-size:
-        11px;
+        9px;
+
     }
 
-    @media (max-width: 850px) {
+    @media (
+      max-width: 800px
+    ) {
 
       main {
+
         width:
-          min(
-            calc(100% - 24px),
-            700px
+          calc(
+            100% - 20px
           );
 
-        padding-top:
-          28px;
       }
 
       .topbar {
+
         align-items:
           flex-start;
 
         flex-direction:
           column;
+
       }
 
-      .grid {
+      .cards {
+
         grid-template-columns:
           1fr;
-      }
 
-      .hero h2 {
-        font-size:
-          42px;
       }
 
     }
@@ -3075,10 +6187,10 @@ app.get(
 
       </div>
 
-      <div class="status">
+      <div class="online">
 
         <span
-          class="status-dot"
+          class="online-dot"
         ></span>
 
         Sistema online
@@ -3101,20 +6213,17 @@ app.get(
 
     </section>
 
-    <section
-      id="dashboard"
-      class="grid"
-    >
+    <section class="cards">
 
       <article class="card">
 
-        <div class="card-head">
+        <div class="card-top">
 
           <p class="label">
             Saldo atual
           </p>
 
-          <span class="icon">
+          <span>
             🏦
           </span>
 
@@ -3131,13 +6240,13 @@ app.get(
 
       <article class="card">
 
-        <div class="card-head">
+        <div class="card-top">
 
           <p class="label">
             Meta diária
           </p>
 
-          <span class="icon">
+          <span>
             🎯
           </span>
 
@@ -3154,13 +6263,13 @@ app.get(
 
       <article class="card">
 
-        <div class="card-head">
+        <div class="card-top">
 
           <p class="label">
             Reserva
           </p>
 
-          <span class="icon">
+          <span>
             🛡️
           </span>
 
@@ -3177,72 +6286,100 @@ app.get(
 
     </section>
 
-    <section
-      class="card section"
-    >
-
-      <div class="card-head">
-
-        <p class="label">
-          Atividade
-        </p>
-
-        <span class="icon">
-          🎙️
-        </span>
-
-      </div>
+    <section class="card ranking">
 
       <h3 class="section-title">
-        Ranking de horas em call
+        🎙️ Ranking de horas em call
       </h3>
 
       <div
         id="ranking"
-        class="ranking"
+        class="rank-list"
       >
 
         <div class="empty">
-          Carregando ranking...
+          Carregando...
         </div>
 
       </div>
 
     </section>
 
-    <footer class="footer">
+    <footer>
+
       Ghost Syndicate
       • Organização
       • Lealdade
       • Resultado
+
     </footer>
 
   </main>
 
   <script>
 
-    const money = (
+    function money(
       value,
-    ) =>
-      Number(value || 0)
-        .toLocaleString(
-          'pt-BR',
-          {
-            style:
-              'currency',
+    ) {
 
-            currency:
-              'BRL',
+      return Number(
+        value || 0,
+      ).toLocaleString(
+        'pt-BR',
+        {
+          style:
+            'currency',
 
-            maximumFractionDigits:
-              0,
-          },
+          currency:
+            'BRL',
+
+          maximumFractionDigits:
+            0,
+        },
+      );
+
+    }
+
+    function duration(
+      seconds,
+    ) {
+
+      const safe =
+        Math.floor(
+          Number(
+            seconds || 0,
+          ),
         );
 
-    const escapeHtml = (
+      const hours =
+        Math.floor(
+          safe /
+            3600,
+        );
+
+      const minutes =
+        Math.floor(
+          (
+            safe %
+            3600
+          ) /
+            60,
+        );
+
+      return (
+        hours +
+        'h ' +
+        minutes +
+        'min'
+      );
+
+    }
+
+    function escapeHtml(
       value,
-    ) =>
-      String(
+    ) {
+
+      return String(
         value ?? '',
       )
         .replaceAll(
@@ -3266,58 +6403,29 @@ app.get(
           '&#039;',
         );
 
-    const formatDuration = (
-      seconds,
-    ) => {
-      const safe =
-        Math.max(
-          0,
-          Math.floor(
-            Number(
-              seconds || 0,
-            ),
-          ),
-        );
+    }
 
-      const hours =
-        Math.floor(
-          safe / 3600,
-        );
-
-      const minutes =
-        Math.floor(
-          (safe % 3600) /
-            60,
-        );
-
-      return (
-        hours > 0
-          ? hours +
-            'h ' +
-            minutes +
-            'min'
-          : minutes +
-            'min'
-      );
-    };
-
-    async function loadDashboard() {
-      const rankingElement =
-        document.getElementById(
-          'ranking',
-        );
+    async function load() {
 
       try {
 
         const response =
           await fetch(
             '/api/overview',
+            {
+              cache:
+                'no-store',
+            },
           );
 
-        if (!response.ok) {
+        if (
+          !response.ok
+        ) {
+
           throw new Error(
-            'Falha na API',
+            'Falha na API.',
           );
+
         }
 
         const data =
@@ -3358,76 +6466,98 @@ app.get(
             ? data.topVoice
             : [];
 
+        const element =
+          document.getElementById(
+            'ranking',
+          );
+
         if (
           ranking.length ===
           0
         ) {
 
-          rankingElement.innerHTML =
+          element.innerHTML =
             '<div class="empty">' +
             'Nenhum registro de voz ainda.' +
             '</div>';
 
           return;
+
         }
 
-        rankingElement.innerHTML =
+        element.innerHTML =
           ranking
             .map(
               (
                 member,
                 index,
-              ) =>
-                '<div class="rank-row">' +
+              ) => {
 
-                  '<div class="rank-position">' +
-                    (index + 1) +
+                return (
+                  '<div class="rank-row">' +
+
+                  '<div class="rank-pos">' +
+                    (
+                      index + 1
+                    ) +
                   '</div>' +
 
                   '<div>' +
 
-                    '<div class="rank-name">' +
-                      escapeHtml(
-                        member.name,
-                      ) +
-                    '</div>' +
+                  '<div class="rank-name">' +
+                    escapeHtml(
+                      member.name,
+                    ) +
+                  '</div>' +
 
-                    '<div class="rank-subtitle">' +
-                      'Participação em voz' +
-                    '</div>' +
+                  '<div class="rank-sub">' +
+                    (
+                      member.active
+                        ? '🟢 AO VIVO'
+                        : 'Participação em voz'
+                    ) +
+                  '</div>' +
 
                   '</div>' +
 
                   '<div class="rank-time">' +
-                    formatDuration(
+                    duration(
                       member.seconds,
                     ) +
                   '</div>' +
 
-                '</div>',
+                  '</div>'
+                );
+
+              },
             )
             .join('');
 
-      } catch (error) {
+      } catch (
+        error
+      ) {
 
         console.error(
           '[DASHBOARD]',
           error,
         );
 
-        rankingElement.innerHTML =
-          '<div class="error">' +
-          'Não foi possível carregar os dados do painel.' +
+        document.getElementById(
+          'ranking',
+        ).innerHTML =
+          '<div class="empty">' +
+          'Não foi possível carregar os dados.' +
           '</div>';
 
       }
+
     }
 
-    loadDashboard();
+    load();
 
     setInterval(
-      loadDashboard,
-      30000,
+      load,
+      5000,
     );
 
   </script>
@@ -3435,9 +6565,8 @@ app.get(
 </body>
 
 </html>
-    `);
-  },
-);
+`;
+}
 
 /* =========================================================
    ERROR HANDLER
@@ -3450,44 +6579,85 @@ app.use(
     res: Response,
     _next: NextFunction,
   ) => {
+
     console.error(
       '[WEB ERROR]',
       error,
     );
 
-    if (res.headersSent) {
+    if (
+      res.headersSent
+    ) {
       return;
     }
 
-    res.status(500).json({
-      error:
-        'Erro interno do servidor.',
-    });
+    res
+      .status(500)
+      .json({
+        error:
+          'Erro interno do servidor.',
+      });
+
   },
 );
 
 /* =========================================================
-   START SERVER
+   NOT FOUND
 ========================================================= */
 
-const port =
-  Number(
-    process.env.WEB_PORT ||
-      3010,
-  );
+app.use(
+  (
+    _req: Request,
+    res: Response,
+  ) => {
+
+    res
+      .status(404)
+      .json({
+        error:
+          'Rota não encontrada.',
+      });
+
+  },
+);
+
+/* =========================================================
+   START
+========================================================= */
 
 const server =
   app.listen(
-    port,
+    PORT,
     () => {
+
       console.log('');
+
       console.log(
         '👻 Ghost Syndicate Web',
       );
+
       console.log(
-        `🌐 http://localhost:${port}`,
+        `🌐 http://localhost:${PORT}`,
       );
+
+      console.log(
+        '📜 Transcripts:',
+      );
+
+      console.log(
+        `   http://localhost:${PORT}/transcripts/ID`,
+      );
+
+      console.log(
+        '🎙️ Ranking:',
+      );
+
+      console.log(
+        `   ${getPublicWebUrl()}/ranking`,
+      );
+
       console.log('');
+
     },
   );
 
@@ -3498,19 +6668,47 @@ const server =
 async function shutdown(
   signal: string,
 ): Promise<void> {
+
+  console.log('');
+
   console.log(
-    `\n🛑 Recebido ${signal}. Encerrando servidor...`,
+    `🛑 Recebido ${signal}. Encerrando servidor...`,
   );
 
   server.close(
     async () => {
-      await db.$disconnect();
 
-      console.log(
-        '✅ Servidor encerrado.',
-      );
+      try {
 
-      process.exit(0);
+        await db.$disconnect();
+
+        console.log(
+          '✅ Banco desconectado.',
+        );
+
+        console.log(
+          '✅ Servidor encerrado.',
+        );
+
+        process.exit(
+          0,
+        );
+
+      } catch (
+        error
+      ) {
+
+        console.error(
+          '❌ Erro ao encerrar:',
+          error,
+        );
+
+        process.exit(
+          1,
+        );
+
+      }
+
     },
   );
 }
@@ -3518,17 +6716,21 @@ async function shutdown(
 process.on(
   'SIGINT',
   () => {
+
     void shutdown(
       'SIGINT',
     );
+
   },
 );
 
 process.on(
   'SIGTERM',
   () => {
+
     void shutdown(
       'SIGTERM',
     );
+
   },
 );
