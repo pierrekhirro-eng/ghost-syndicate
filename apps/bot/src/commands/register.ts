@@ -14,11 +14,69 @@ import {
   adminCommand,
 } from './admin.js';
 
+import {
+  financeCommand,
+} from './finance.js';
+
+import {
+  operationsCommand,
+} from './operations.js';
+
+import {
+  missionsCommand,
+} from './missions.js';
+
+import {
+  loansCommand,
+} from './loans.js';
+
+import {
+  rankingCommand,
+} from './ranking.js';
+
+import {
+  rewardsCommand,
+} from './rewards.js';
+
+import {
+  ticketsCommand,
+} from './tickets.js';
+
+import {
+  membersCommand,
+} from './members.js';
+
+import {
+  configCommand,
+} from './config.js';
+
+import {
+  moderationCommand,
+} from './moderation.js';
+
 /* =========================================================
    COMANDOS
 ========================================================= */
 
+/*
+ * Os comandos antigos simples continuam existindo porque
+ * já são usados pelo sistema:
+ *
+ * /caixa
+ * /entrada
+ * /saida
+ * /horas
+ * /ranking-voz
+ *
+ * Os módulos novos entram abaixo.
+ */
+
 const commands = [
+
+  /* =======================================================
+     FINANCEIRO BÁSICO
+  ======================================================= */
+
   new SlashCommandBuilder()
     .setName('caixa')
     .setDescription(
@@ -73,56 +131,11 @@ const commands = [
         .setMaxLength(200),
     ),
 
-  new SlashCommandBuilder()
-    .setName('emprestimo')
-    .setDescription(
-      'Registra um novo empréstimo.',
-    )
-    .addStringOption((option) =>
-      option
-        .setName('tipo')
-        .setDescription(
-          'Tipo do empréstimo.',
-        )
-        .setRequired(true)
-        .addChoices(
-          {
-            name: 'Dinheiro',
-            value: 'DINHEIRO',
-          },
-          {
-            name: 'Veículo',
-            value: 'VEICULO',
-          },
-        ),
-    )
-    .addStringOption((option) =>
-      option
-        .setName('valor')
-        .setDescription(
-          'Valor ou veículo emprestado.',
-        )
-        .setRequired(true)
-        .setMaxLength(150),
-    )
-    .addStringOption((option) =>
-      option
-        .setName('prazo')
-        .setDescription(
-          'Prazo para devolução.',
-        )
-        .setRequired(true)
-        .setMaxLength(100),
-    )
-    .addStringOption((option) =>
-      option
-        .setName('juros')
-        .setDescription(
-          'Juros do empréstimo.',
-        )
-        .setRequired(false)
-        .setMaxLength(50),
-    ),
+  financeCommand,
+
+  /* =======================================================
+     VOZ
+  ======================================================= */
 
   new SlashCommandBuilder()
     .setName('horas')
@@ -136,13 +149,45 @@ const commands = [
       'Mostra o ranking de horas em call.',
     ),
 
-  new SlashCommandBuilder()
-    .setName('ticket-setup')
-    .setDescription(
-      'Envia a central de tickets.',
-    ),
+  /* =======================================================
+     ADMINISTRAÇÃO
+  ======================================================= */
 
   adminCommand,
+
+  configCommand,
+
+  membersCommand,
+
+  moderationCommand,
+
+  /* =======================================================
+     OPERAÇÕES
+  ======================================================= */
+
+  operationsCommand,
+
+  missionsCommand,
+
+  /* =======================================================
+     EMPRÉSTIMOS
+  ======================================================= */
+
+  loansCommand,
+
+  /* =======================================================
+     RANKING / PREMIAÇÕES
+  ======================================================= */
+
+  rankingCommand,
+
+  rewardsCommand,
+
+  /* =======================================================
+     TICKETS
+  ======================================================= */
+
+  ticketsCommand,
 ];
 
 /* =========================================================
@@ -156,16 +201,18 @@ export async function registerCommands(): Promise<void> {
   );
   console.log('');
 
-  const rest = new REST({
-    version: '10',
-  }).setToken(
-    config.discord.token,
-  );
+  const rest =
+    new REST({
+      version: '10',
+    }).setToken(
+      config.discord.token,
+    );
 
   try {
     const commandData =
-      commands.map((command) =>
-        command.toJSON(),
+      commands.map(
+        (command) =>
+          command.toJSON(),
       );
 
     console.log(
@@ -177,7 +224,8 @@ export async function registerCommands(): Promise<void> {
     );
 
     for (
-      const command of commandData
+      const command
+      of commandData
     ) {
       console.log(
         `   /${command.name}`,
@@ -192,7 +240,8 @@ export async function registerCommands(): Promise<void> {
         config.discord.guildId,
       ),
       {
-        body: commandData,
+        body:
+          commandData,
       },
     );
 
@@ -222,7 +271,8 @@ export async function registerCommands(): Promise<void> {
 ========================================================= */
 
 const currentFile =
-  process.argv[1] ?? '';
+  process.argv[1] ??
+  '';
 
 const isDirectExecution =
   currentFile.endsWith(
@@ -232,7 +282,9 @@ const isDirectExecution =
     'register.ts',
   );
 
-if (isDirectExecution) {
+if (
+  isDirectExecution
+) {
   registerCommands()
     .then(() => {
       console.log(
