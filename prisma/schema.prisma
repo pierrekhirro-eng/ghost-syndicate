@@ -8,83 +8,193 @@ datasource db {
 }
 
 model Guild {
-  id              String   @id
-  name            String
-  cashBalance     Int      @default(450000)
-  dailyGoal       Int      @default(0)
-  reserve         Int      @default(0)
-  updatedAt       DateTime @updatedAt
-  members         Member[]
-  cashMovements   CashMovement[]
-  loans           Loan[]
-  operations      Operation[]
-  missions        Mission[]
-  voiceSessions   VoiceSession[]
+  id          String   @id
+  name        String
+  cashBalance Int      @default(450000)
+  dailyGoal   Int      @default(0)
+  reserve     Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  config GuildConfig?
+
+  members       Member[]
+  cashMovements CashMovement[]
+  loans         Loan[]
+  operations    Operation[]
+  missions      Mission[]
+  voiceSessions VoiceSession[]
+}
+
+model GuildConfig {
+  id      String @id @default(cuid())
+  guildId String @unique
+
+  // =======================================================
+  // IDENTIDADE
+  // =======================================================
+
+  serverName String @default("Ghost Syndicate")
+  brandName  String @default("Ghost Syndicate")
+
+  primaryColor   String @default("#43FF98")
+  secondaryColor String @default("#07120C")
+  footerText     String @default("Ghost Syndicate • Organização • Lealdade • Resultado")
+
+  // =======================================================
+  // TICKETS
+  // =======================================================
+
+  ticketsEnabled Boolean @default(true)
+
+  ticketTitle       String @default("🎫 CENTRAL DE ATENDIMENTO")
+  ticketDescription String @default("Abra um atendimento privado com nossa equipe.")
+  ticketWelcomeText String @default("Olá {user}, seu atendimento foi aberto. Explique abaixo o que você precisa e aguarde nossa equipe.")
+
+  // =======================================================
+  // BOTÃO: ABRIR ATENDIMENTO
+  // =======================================================
+
+  ticketOpenButtonLabel String @default("Abrir Atendimento")
+  ticketOpenButtonEmoji String @default("🎫")
+
+  // =======================================================
+  // BOTÃO: COMO FUNCIONA
+  // =======================================================
+
+  ticketHowButtonLabel String @default("Como funciona")
+  ticketHowButtonEmoji String @default("❓")
+
+  // =======================================================
+  // BOTÃO: FINANCEIRO
+  // =======================================================
+
+  ticketFinanceButtonLabel String @default("Financeiro")
+  ticketFinanceButtonEmoji String @default("💰")
+
+  // =======================================================
+  // CANAIS
+  // =======================================================
+
+  ticketCategoryId    String?
+  transcriptChannelId String?
+
+  // =======================================================
+  // CARGOS
+  // =======================================================
+
+  ownerRoleId      String?
+  adminRoleId      String?
+  recruitRoleId    String?
+  financeRoleId    String?
+  operationsRoleId String?
+
+  // =======================================================
+  // RANKING
+  // =======================================================
+
+  rankingEnabled   Boolean @default(true)
+  rankingChannelId String?
+
+  rankingTitle       String @default("🎙️ Ranking de horas em call")
+  rankingDescription String @default("Acompanhe o tempo acumulado da equipe nos canais de voz.")
+
+  // =======================================================
+  // FINANCEIRO
+  // =======================================================
+
+  financeEnabled Boolean @default(true)
+
+  // =======================================================
+  // MODERAÇÃO
+  // =======================================================
+
+  moderationEnabled Boolean @default(true)
+
+  // =======================================================
+  // DATAS
+  // =======================================================
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // =======================================================
+  // RELAÇÃO COM SERVIDOR
+  // =======================================================
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
 }
 
 model Member {
-  id            String   @id
-  guildId       String
-  username      String
-  displayName   String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  id          String   @id
+  guildId     String
+  username    String
+  displayName String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  guild         Guild          @relation(fields: [guildId], references: [id], onDelete: Cascade)
   voiceSessions VoiceSession[]
   cashMovements CashMovement[]
   loans         Loan[]
 }
 
 model CashMovement {
-  id           String   @id @default(cuid())
-  guildId      String
-  memberId     String?
-  type         String
-  amount       Int
-  reason       String
-  responsible  String
-  createdAt    DateTime @default(now())
-  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  member       Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  id          String   @id @default(cuid())
+  guildId     String
+  memberId    String?
+  type        String
+  amount      Int
+  reason      String
+  responsible String
+  createdAt   DateTime @default(now())
+
+  guild  Guild   @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member Member? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+
   @@index([guildId, createdAt])
 }
 
 model Loan {
-  id            String   @id @default(cuid())
-  guildId       String
-  memberId      String
-  type          String
-  value         String
-  dueAt         DateTime
-  interest      String   @default("Sem juros")
-  status        String   @default("ATIVO")
-  createdAt     DateTime @default(now())
-  guild         Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  member        Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  guildId   String
+  memberId  String
+  type      String
+  value     String
+  dueAt     DateTime
+  interest  String   @default("Sem juros")
+  status    String   @default("ATIVO")
+  createdAt DateTime @default(now())
+
+  guild  Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }
 
 model Operation {
-  id           String   @id @default(cuid())
-  guildId      String
-  name         String
-  dateLabel    String
-  timeLabel    String
-  responsible  String
-  objective    String
-  reward       String
-  status       String   @default("AGUARDANDO")
-  createdAt    DateTime @default(now())
-  guild        Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
-}
-
-model Mission {
   id          String   @id @default(cuid())
   guildId     String
   name        String
-  reward      Int
-  active      Boolean  @default(true)
+  dateLabel   String
+  timeLabel   String
+  responsible String
+  objective   String
+  reward      String
+  status      String   @default("AGUARDANDO")
   createdAt   DateTime @default(now())
-  guild       Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+}
+
+model Mission {
+  id        String   @id @default(cuid())
+  guildId   String
+  name      String
+  reward    Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
 }
 
 model VoiceSession {
@@ -95,7 +205,9 @@ model VoiceSession {
   startedAt DateTime
   endedAt   DateTime?
   seconds   Int       @default(0)
-  guild     Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
-  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  guild  Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
   @@index([guildId, memberId, startedAt])
 }

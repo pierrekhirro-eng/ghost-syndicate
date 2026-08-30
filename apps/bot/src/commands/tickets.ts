@@ -6,79 +6,726 @@ import {
   ButtonInteraction,
   ButtonStyle,
   ChannelType,
+  ChatInputCommandInteraction,
   EmbedBuilder,
   PermissionFlagsBits,
-  SlashCommandBuilder,
-  type ChatInputCommandInteraction,
-  type GuildMember,
-  type OverwriteResolvable,
-  type TextChannel,
+  TextChannel,
 } from 'discord.js';
 
-import * as discordTranscripts from 'discord.js-html-transcript';
-
-import {
-  mkdir,
-  writeFile,
-} from 'node:fs/promises';
-
-import path from 'node:path';
-
-import {
-  requireAdmin,
-} from '../utils/permissions.js';
-
-import {
-  config,
-} from '../utils/config.js';
+import { createTranscript } from '../services/transcript.js';
+import { db } from '../services/db.js';
 
 /* =========================================================
    TIPOS
 ========================================================= */
 
-type TicketStatus =
-  | 'OPEN'
-  | 'IN_PROGRESS'
-  | 'CLOSED';
+type TicketType =
+  | 'SUPORTE'
+  | 'FINANCEIRO'
+  | 'RECRUTAMENTO';
+
+type PermissionOverwriteData = {
+  id: string;
+
+  allow?: bigint[];
+
+  deny?: bigint[];
+};
+
+type TicketConfig = {
+  guildId: string;
+
+  serverName: string;
+
+  brandName: string;
+
+  primaryColor: string;
+
+  secondaryColor: string;
+
+  footerText: string;
+
+  ticketsEnabled: boolean;
+
+  ticketTitle: string;
+
+  ticketDescription: string;
+
+  ticketWelcomeText: string;
+
+  ticketOpenButtonLabel: string;
+
+  ticketOpenButtonEmoji: string;
+
+  ticketHowButtonLabel: string;
+
+  ticketHowButtonEmoji: string;
+
+  ticketFinanceButtonLabel: string;
+
+  ticketFinanceButtonEmoji: string;
+
+  ticketCategoryId: string | null;
+
+  transcriptChannelId: string | null;
+
+  ownerRoleId: string | null;
+
+  adminRoleId: string | null;
+
+  recruitRoleId: string | null;
+
+  financeRoleId: string | null;
+
+  operationsRoleId: string | null;
+};
 
 /* =========================================================
-   IDENTIDADE VISUAL
+   CONSTANTES
 ========================================================= */
 
 const COLORS = {
-  brand: 0x7c5cff,
-  success: 0x35d39a,
-  warning: 0xffc857,
+  primary: 0x43ff98,
+
+  secondary: 0x7c5cff,
+
   danger: 0xf15b6b,
-  info: 0x5865f2,
+
+  recruitment: 0x8b5cf6,
+
+  warning: 0xffb347,
 } as const;
 
-const FOOTER =
-  'Ghost Syndicate • Central de Atendimento';
+/*
+ * Cargo de recrutadores informado pelo cliente.
+ */
+const DEFAULT_RECRUIT_ROLE_ID =
+  '1543474370192736297';
 
 /* =========================================================
-   COMANDO
+   CONFIGURAÇÕES PADRÃO
 ========================================================= */
 
-export const ticketsCommand =
-  new SlashCommandBuilder()
-    .setName('ticket')
-    .setDescription(
-      'Abre a central de atendimento da Ghost Syndicate.',
+const DEFAULTS = {
+  serverName:
+    'Ghost Syndicate',
+
+  brandName:
+    'Ghost Syndicate',
+
+  primaryColor:
+    '#43FF98',
+
+  secondaryColor:
+    '#07120C',
+
+  footerText:
+    'Ghost Syndicate • Organização • Lealdade • Resultado',
+
+  ticketsEnabled:
+    true,
+
+  ticketTitle:
+    '🎫 CENTRAL DE ATENDIMENTO',
+
+  ticketDescription:
+    'Escolha abaixo o tipo de atendimento que você precisa.',
+
+  ticketWelcomeText:
+    'Olá {user}! Descreva o que você precisa e aguarde nossa equipe.',
+
+  ticketOpenButtonLabel:
+    'Atendimento',
+
+  ticketOpenButtonEmoji:
+    '🎫',
+
+  ticketHowButtonLabel:
+    'Ajuda',
+
+  ticketHowButtonEmoji:
+    '❓',
+
+  ticketFinanceButtonLabel:
+    'Financeiro',
+
+  ticketFinanceButtonEmoji:
+    '💰',
+
+  recruitmentButtonLabel:
+    'Recrutamento',
+
+  recruitmentButtonEmoji:
+    '👤',
+} as const;
+
+/* =========================================================
+   FORMULÁRIO DE RECRUTAMENTO
+========================================================= */
+
+const RECRUITMENT_FORM = [
+  '👤 **INFORMAÇÕES DO CANDIDATO**',
+
+  '',
+
+  '1. Nome de usuário no Roblox:',
+  '2. Idade:',
+  '3. Há quanto tempo joga Metrópoles RP?',
+  '4. Já participou de alguma facção? Se sim, qual?',
+  '5. Quanto tempo costuma jogar por dia?',
+  '6. Por que deseja entrar na Ghost Syndicate?',
+
+  '',
+
+  '🎭 **CONHECIMENTO DE RP**',
+
+  '',
+
+  '7. O que significa RDM?',
+  '8. O que significa VDM?',
+  '9. O que é Metagaming (MG)?',
+  '10. O que é Powergaming (PG)?',
+  '11. O que é Fear RP?',
+  '12. Se outro jogador começar a provocar você durante uma situação de RP, como você deve agir?',
+  '13. Se você descobrir uma informação fora do jogo que seu personagem não sabe, pode utilizar essa informação dentro do RP? Explique.',
+  '14. Se um membro da Ghost pedir para você fazer algo que viole as regras do Metrópoles, o que você faria?',
+
+  '',
+
+  '👻 **SOBRE A GHOST SYNDICATE**',
+
+  '',
+
+  '15. Você está de acordo com as regras da Ghost Syndicate?',
+  '16. Você consegue cumprir as obrigações financeiras estabelecidas pela facção?',
+  '17. Está disposto a participar de missões e operações?',
+  '18. Como pretende contribuir para o crescimento da Ghost Syndicate?',
+  '19. Como pretende pagar a taxa de entrada de 100k?',
+  '💵 Dinheiro / 🔫 Arma / 🚗 Veículo',
+  '20. Caso seja com arma ou veículo, qual item pretende oferecer?',
+] as const;
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function cleanText(
+  value: unknown,
+
+  fallback: string,
+
+  maxLength: number,
+): string {
+  if (
+    typeof value !==
+    'string'
+  ) {
+    return fallback;
+  }
+
+  const text =
+    value.trim();
+
+  if (
+    !text
+  ) {
+    return fallback;
+  }
+
+  return text.slice(
+    0,
+    maxLength,
+  );
+}
+
+function cleanEmoji(
+  value: unknown,
+
+  fallback: string,
+): string {
+  const emoji =
+    String(
+      value ??
+        '',
+    ).trim();
+
+  if (
+    !emoji
+  ) {
+    return fallback;
+  }
+
+  return emoji.slice(
+    0,
+    100,
+  );
+}
+
+function normalizeHex(
+  value:
+    | string
+    | null
+    | undefined,
+
+  fallback:
+    number,
+): number {
+  const raw =
+    String(
+      value ??
+        '',
+    )
+      .trim()
+      .replace(
+        /^#/,
+        '',
+      );
+
+  if (
+    !/^[0-9a-fA-F]{6}$/.test(
+      raw,
+    )
+  ) {
+    return fallback;
+  }
+
+  return Number.parseInt(
+    raw,
+    16,
+  );
+}
+
+function cleanChannelName(
+  username: string,
+): string {
+  const normalized =
+    username
+      .toLowerCase()
+      .normalize(
+        'NFD',
+      )
+      .replace(
+        /[\u0300-\u036f]/g,
+        '',
+      )
+      .replace(
+        /[^a-z0-9-]/g,
+        '-',
+      )
+      .replace(
+        /-+/g,
+        '-',
+      )
+      .replace(
+        /^-|-$/g,
+        '',
+      );
+
+  return (
+    normalized.slice(
+      0,
+      24,
+    ) ||
+    'usuario'
+  );
+}
+
+function getTopicValue(
+  channel: TextChannel,
+
+  key: string,
+): string | null {
+  const topic =
+    channel.topic ??
+    '';
+
+  const escapedKey =
+    key.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      '\\$&',
     );
 
+  const match =
+    topic.match(
+      new RegExp(
+        `(?:^|;)${escapedKey}=([^;]+)`,
+        'i',
+      ),
+    );
+
+  return (
+    match?.[1] ??
+    null
+  );
+}
+
+function isTicketChannel(
+  channel: TextChannel,
+): boolean {
+  return Boolean(
+    getTopicValue(
+      channel,
+      'ticket-owner',
+    ),
+  );
+}
+
+function replacePlaceholders(
+  text: string,
+
+  interaction: ButtonInteraction,
+): string {
+  return text
+    .replaceAll(
+      '{user}',
+      interaction.user.toString(),
+    )
+    .replaceAll(
+      '{username}',
+      interaction.user.username,
+    )
+    .replaceAll(
+      '{server}',
+      interaction.guild?.name ??
+        DEFAULTS.serverName,
+    );
+}
+
 /* =========================================================
-   EXECUTOR DO /TICKET
+   CONFIG DO BANCO
 ========================================================= */
 
-export async function executeTicketsCommand(
-  interaction: ChatInputCommandInteraction,
+async function getTicketConfig(
+  guildId: string,
+): Promise<TicketConfig> {
+  const saved =
+    await db.guildConfig.findUnique({
+      where: {
+        guildId,
+      },
+    });
+
+  if (
+    !saved
+  ) {
+    return {
+      guildId,
+
+      serverName:
+        DEFAULTS.serverName,
+
+      brandName:
+        DEFAULTS.brandName,
+
+      primaryColor:
+        DEFAULTS.primaryColor,
+
+      secondaryColor:
+        DEFAULTS.secondaryColor,
+
+      footerText:
+        DEFAULTS.footerText,
+
+      ticketsEnabled:
+        DEFAULTS.ticketsEnabled,
+
+      ticketTitle:
+        DEFAULTS.ticketTitle,
+
+      ticketDescription:
+        DEFAULTS.ticketDescription,
+
+      ticketWelcomeText:
+        DEFAULTS.ticketWelcomeText,
+
+      ticketOpenButtonLabel:
+        DEFAULTS.ticketOpenButtonLabel,
+
+      ticketOpenButtonEmoji:
+        DEFAULTS.ticketOpenButtonEmoji,
+
+      ticketHowButtonLabel:
+        DEFAULTS.ticketHowButtonLabel,
+
+      ticketHowButtonEmoji:
+        DEFAULTS.ticketHowButtonEmoji,
+
+      ticketFinanceButtonLabel:
+        DEFAULTS.ticketFinanceButtonLabel,
+
+      ticketFinanceButtonEmoji:
+        DEFAULTS.ticketFinanceButtonEmoji,
+
+      ticketCategoryId:
+        null,
+
+      transcriptChannelId:
+        null,
+
+      ownerRoleId:
+        null,
+
+      adminRoleId:
+        null,
+
+      recruitRoleId:
+        DEFAULT_RECRUIT_ROLE_ID,
+
+      financeRoleId:
+        null,
+
+      operationsRoleId:
+        null,
+    };
+  }
+
+  return {
+    guildId,
+
+    serverName:
+      saved.serverName ??
+      DEFAULTS.serverName,
+
+    brandName:
+      saved.brandName ??
+      DEFAULTS.brandName,
+
+    primaryColor:
+      saved.primaryColor ??
+      DEFAULTS.primaryColor,
+
+    secondaryColor:
+      saved.secondaryColor ??
+      DEFAULTS.secondaryColor,
+
+    footerText:
+      saved.footerText ??
+      DEFAULTS.footerText,
+
+    ticketsEnabled:
+      saved.ticketsEnabled ??
+      DEFAULTS.ticketsEnabled,
+
+    ticketTitle:
+      saved.ticketTitle ??
+      DEFAULTS.ticketTitle,
+
+    ticketDescription:
+      saved.ticketDescription ??
+      DEFAULTS.ticketDescription,
+
+    ticketWelcomeText:
+      saved.ticketWelcomeText ??
+      DEFAULTS.ticketWelcomeText,
+
+    ticketOpenButtonLabel:
+      saved.ticketOpenButtonLabel ??
+      DEFAULTS.ticketOpenButtonLabel,
+
+    ticketOpenButtonEmoji:
+      saved.ticketOpenButtonEmoji ??
+      DEFAULTS.ticketOpenButtonEmoji,
+
+    ticketHowButtonLabel:
+      saved.ticketHowButtonLabel ??
+      DEFAULTS.ticketHowButtonLabel,
+
+    ticketHowButtonEmoji:
+      saved.ticketHowButtonEmoji ??
+      DEFAULTS.ticketHowButtonEmoji,
+
+    ticketFinanceButtonLabel:
+      saved.ticketFinanceButtonLabel ??
+      DEFAULTS.ticketFinanceButtonLabel,
+
+    ticketFinanceButtonEmoji:
+      saved.ticketFinanceButtonEmoji ??
+      DEFAULTS.ticketFinanceButtonEmoji,
+
+    ticketCategoryId:
+      saved.ticketCategoryId ??
+      null,
+
+    transcriptChannelId:
+      saved.transcriptChannelId ??
+      null,
+
+    ownerRoleId:
+      saved.ownerRoleId ??
+      null,
+
+    adminRoleId:
+      saved.adminRoleId ??
+      null,
+
+    recruitRoleId:
+      saved.recruitRoleId ??
+      DEFAULT_RECRUIT_ROLE_ID,
+
+    financeRoleId:
+      saved.financeRoleId ??
+      null,
+
+    operationsRoleId:
+      saved.operationsRoleId ??
+      null,
+  };
+}
+
+/* =========================================================
+   CARGOS DA EQUIPE
+========================================================= */
+
+function getStaffRoleIds(
+  ticketConfig: TicketConfig,
+): string[] {
+  return [
+    ticketConfig.ownerRoleId,
+
+    ticketConfig.adminRoleId,
+
+    ticketConfig.recruitRoleId,
+
+    ticketConfig.financeRoleId,
+
+    ticketConfig.operationsRoleId,
+  ].filter(
+    (
+      id,
+    ): id is string =>
+      Boolean(
+        id,
+      ),
+  );
+}
+
+function hasStaffPermission(
+  interaction: ButtonInteraction,
+
+  ticketConfig: TicketConfig,
+): boolean {
+  if (
+    !interaction.inCachedGuild()
+  ) {
+    return false;
+  }
+
+  if (
+    interaction.member.permissions.has(
+      PermissionFlagsBits.Administrator,
+    )
+  ) {
+    return true;
+  }
+
+  return getStaffRoleIds(
+    ticketConfig,
+  ).some(
+    (
+      roleId,
+    ) =>
+      interaction.member.roles.cache.has(
+        roleId,
+      ),
+  );
+}
+
+/* =========================================================
+   RECRUTAMENTO
+========================================================= */
+
+function getRecruitRoleId(
+  ticketConfig: TicketConfig,
+): string {
+  return (
+    ticketConfig.recruitRoleId ??
+    DEFAULT_RECRUIT_ROLE_ID
+  );
+}
+
+function isRecruiter(
+  interaction: ButtonInteraction,
+
+  ticketConfig: TicketConfig,
+): boolean {
+  if (
+    !interaction.inCachedGuild()
+  ) {
+    return false;
+  }
+
+  if (
+    interaction.member.permissions.has(
+      PermissionFlagsBits.Administrator,
+    )
+  ) {
+    return true;
+  }
+
+  return interaction.member.roles.cache.has(
+    getRecruitRoleId(
+      ticketConfig,
+    ),
+  );
+}
+
+/* =========================================================
+   REPLY
+========================================================= */
+
+async function replyButton(
+  interaction: ButtonInteraction,
+
+  content: string,
+
+  ephemeral = true,
 ): Promise<void> {
-  if (!interaction.guild) {
-    await interaction.reply({
-      content:
-        '❌ Este comando só pode ser usado dentro do servidor.',
-      ephemeral: true,
+  if (
+    interaction.replied ||
+    interaction.deferred
+  ) {
+    await interaction.followUp({
+      content,
+
+      flags:
+        ephemeral
+          ? 64
+          : undefined,
+    });
+
+    return;
+  }
+
+  await interaction.reply({
+    content,
+
+    flags:
+      ephemeral
+        ? 64
+        : undefined,
+  });
+}
+
+async function replyEmbedButton(
+  interaction: ButtonInteraction,
+
+  embed: EmbedBuilder,
+
+  ephemeral = false,
+): Promise<void> {
+  if (
+    interaction.replied ||
+    interaction.deferred
+  ) {
+    await interaction.followUp({
+      embeds: [
+        embed,
+      ],
+
+      flags:
+        ephemeral
+          ? 64
+          : undefined,
     });
 
     return;
@@ -86,291 +733,757 @@ export async function executeTicketsCommand(
 
   await interaction.reply({
     embeds: [
-      createMainPanelEmbed(),
+      embed,
     ],
-    components: [
-      createMainPanelButtons(),
-    ],
+
+    flags:
+      ephemeral
+        ? 64
+        : undefined,
   });
 }
 
 /* =========================================================
-   PAINEL PRINCIPAL
+   PERMISSÕES DE RECRUTAMENTO
 ========================================================= */
 
-function createMainPanelEmbed(): EmbedBuilder {
-  return new EmbedBuilder()
-    .setColor(
-      COLORS.brand,
-    )
-    .setTitle(
-      '👻 GHOST SYNDICATE',
-    )
-    .setDescription(
-      [
-        '## 🎫 CENTRAL DE ATENDIMENTO',
-        '',
-        '> O canal oficial para suporte e atendimento da Ghost Syndicate.',
-        '',
-        '━━━━━━━━━━━━━━━━━━━━━━━━',
-        '',
-        '### 🔒 ATENDIMENTO PRIVADO',
-        '',
-        'Abra um canal exclusivo com você e a equipe autorizada.',
-        '',
-        '### ⚡ SIMPLES E ORGANIZADO',
-        '',
-        'Seu atendimento é criado automaticamente e permanece separado dos demais.',
-        '',
-        '### 📜 HISTÓRICO',
-        '',
-        'Ao finalizar, o histórico pode ser arquivado como transcript.',
-        '',
-        '━━━━━━━━━━━━━━━━━━━━━━━━',
-        '',
-        '### 📌 ANTES DE ABRIR',
-        '',
-        'Explique sua solicitação com clareza.',
-        '',
-        'Envie prints ou arquivos quando forem necessários.',
-        '',
-        'Evite abrir vários tickets para o mesmo assunto.',
-        '',
-        '### 🎫 PRECISA DE AJUDA?',
-        '',
-        'Clique em **Abrir Atendimento**.',
-      ].join('\n'),
-    )
-    .addFields(
-      {
-        name:
-          '🔒 PRIVADO',
-        value:
-          'Acesso restrito aos envolvidos.',
-        inline:
-          true,
-      },
-      {
-        name:
-          '🛡️ EQUIPE',
-        value:
-          'Atendimento administrativo.',
-        inline:
-          true,
-      },
-      {
-        name:
-          '📜 HISTÓRICO',
-        value:
-          'Transcript arquivado.',
-        inline:
-          true,
-      },
-    )
-    .setFooter({
-      text:
-        FOOTER,
-    })
-    .setTimestamp();
+function buildRecruitmentPermissions(
+  everyoneId: string,
+
+  candidateId: string,
+
+  recruiterRoleId: string,
+
+  botId: string,
+): PermissionOverwriteData[] {
+  return [
+    {
+      /*
+       * @everyone
+       */
+      id:
+        everyoneId,
+
+      deny: [
+        PermissionFlagsBits.ViewChannel,
+
+        PermissionFlagsBits.SendMessages,
+      ],
+    },
+
+    {
+      /*
+       * Candidato
+       */
+      id:
+        candidateId,
+
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+
+        PermissionFlagsBits.SendMessages,
+
+        PermissionFlagsBits.ReadMessageHistory,
+
+        PermissionFlagsBits.AttachFiles,
+
+        PermissionFlagsBits.EmbedLinks,
+      ],
+    },
+
+    {
+      /*
+       * Cargo de recrutadores.
+       *
+       * Antes de alguém assumir:
+       * o cargo pode visualizar e falar.
+       */
+      id:
+        recruiterRoleId,
+
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+
+        PermissionFlagsBits.SendMessages,
+
+        PermissionFlagsBits.ReadMessageHistory,
+
+        PermissionFlagsBits.AttachFiles,
+
+        PermissionFlagsBits.EmbedLinks,
+      ],
+    },
+
+    {
+      /*
+       * Bot
+       */
+      id:
+        botId,
+
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+
+        PermissionFlagsBits.SendMessages,
+
+        PermissionFlagsBits.ReadMessageHistory,
+
+        PermissionFlagsBits.AttachFiles,
+
+        PermissionFlagsBits.EmbedLinks,
+
+        PermissionFlagsBits.ManageChannels,
+
+        PermissionFlagsBits.ManageMessages,
+      ],
+    },
+  ];
 }
 
 /* =========================================================
-   BOTÕES DO PAINEL
+   CENTRAL
 ========================================================= */
 
-function createMainPanelButtons(): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId(
-          'ticket:create',
-        )
-        .setLabel(
-          'Abrir Atendimento',
-        )
-        .setEmoji(
-          '🎫',
-        )
-        .setStyle(
-          ButtonStyle.Primary,
-        ),
+function buildSetupRow(
+  ticketConfig: TicketConfig,
+): ActionRowBuilder<ButtonBuilder>[] {
+  const row1 =
+    new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
 
-      new ButtonBuilder()
-        .setCustomId(
-          'ticket:info',
-        )
-        .setLabel(
-          'Como funciona',
-        )
-        .setEmoji(
-          '❔',
-        )
-        .setStyle(
-          ButtonStyle.Secondary,
-        ),
+        new ButtonBuilder()
+          .setCustomId(
+            'ticket:create',
+          )
+          .setLabel(
+            cleanText(
+              ticketConfig.ticketOpenButtonLabel,
 
-      new ButtonBuilder()
-        .setCustomId(
-          'ticket:finance',
-        )
-        .setLabel(
-          'Financeiro',
-        )
-        .setEmoji(
-          '💰',
-        )
-        .setStyle(
-          ButtonStyle.Secondary,
-        ),
-    );
+              DEFAULTS.ticketOpenButtonLabel,
+
+              80,
+            ),
+          )
+          .setEmoji(
+            cleanEmoji(
+              ticketConfig.ticketOpenButtonEmoji,
+
+              DEFAULTS.ticketOpenButtonEmoji,
+            ),
+          )
+          .setStyle(
+            ButtonStyle.Primary,
+          ),
+
+        new ButtonBuilder()
+          .setCustomId(
+            'ticket:how',
+          )
+          .setLabel(
+            cleanText(
+              ticketConfig.ticketHowButtonLabel,
+
+              DEFAULTS.ticketHowButtonLabel,
+
+              80,
+            ),
+          )
+          .setEmoji(
+            cleanEmoji(
+              ticketConfig.ticketHowButtonEmoji,
+
+              DEFAULTS.ticketHowButtonEmoji,
+            ),
+          )
+          .setStyle(
+            ButtonStyle.Secondary,
+          ),
+      );
+
+  const row2 =
+    new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+
+        new ButtonBuilder()
+          .setCustomId(
+            'ticket:finance',
+          )
+          .setLabel(
+            cleanText(
+              ticketConfig.ticketFinanceButtonLabel,
+
+              DEFAULTS.ticketFinanceButtonLabel,
+
+              80,
+            ),
+          )
+          .setEmoji(
+            cleanEmoji(
+              ticketConfig.ticketFinanceButtonEmoji,
+
+              DEFAULTS.ticketFinanceButtonEmoji,
+            ),
+          )
+          .setStyle(
+            ButtonStyle.Success,
+          ),
+
+        new ButtonBuilder()
+          .setCustomId(
+            'ticket:recruitment',
+          )
+          .setLabel(
+            DEFAULTS.recruitmentButtonLabel,
+          )
+          .setEmoji(
+            DEFAULTS.recruitmentButtonEmoji,
+          )
+          .setStyle(
+            ButtonStyle.Secondary,
+          ),
+      );
+
+  return [
+    row1,
+    row2,
+  ];
 }
 
 /* =========================================================
-   HANDLER CENTRAL
+   BOTÕES INTERNOS
 ========================================================= */
 
-export async function handleTicketInteraction(
-  interaction: ButtonInteraction,
-): Promise<void> {
-  try {
-    switch (
-      interaction.customId
-    ) {
-      case 'ticket:create':
-        await createTicket(
-          interaction,
-        );
-        break;
+function buildManagementRow():
+  ActionRowBuilder<ButtonBuilder> {
+  return (
+    new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
 
-      case 'ticket:info':
-        await showGeneralInfo(
-          interaction,
-        );
-        break;
+        new ButtonBuilder()
+          .setCustomId(
+            'ticket:assume',
+          )
+          .setLabel(
+            'Assumir',
+          )
+          .setEmoji(
+            '🛡️',
+          )
+          .setStyle(
+            ButtonStyle.Primary,
+          ),
 
-      case 'ticket:finance':
-        await showFinanceInfo(
-          interaction,
-        );
-        break;
+        new ButtonBuilder()
+          .setCustomId(
+            'ticket:transcript',
+          )
+          .setLabel(
+            'Transcript',
+          )
+          .setEmoji(
+            '📜',
+          )
+          .setStyle(
+            ButtonStyle.Secondary,
+          ),
 
-      case 'ticket:assume':
-        await assumeTicket(
-          interaction,
-        );
-        break;
-
-      case 'ticket:transcript':
-        await generateAndSendTranscript(
-          interaction,
-        );
-        break;
-
-      case 'ticket:close':
-        await closeTicket(
-          interaction,
-        );
-        break;
-
-      default:
-        await safeReply(
-          interaction,
-          '❌ Ação de ticket não reconhecida.',
-          true,
-        );
-        break;
-    }
-  } catch (error) {
-    console.error(
-      '❌ [TICKET]',
-      error,
-    );
-
-    await safeReply(
-      interaction,
-      error instanceof Error
-        ? `❌ ${error.message}`
-        : '❌ Ocorreu um erro no sistema de tickets.',
-      true,
-    );
-  }
+        new ButtonBuilder()
+          .setCustomId(
+            'ticket:close',
+          )
+          .setLabel(
+            'Encerrar',
+          )
+          .setEmoji(
+            '🔒',
+          )
+          .setStyle(
+            ButtonStyle.Danger,
+          ),
+      )
+  );
 }
 
 /* =========================================================
-   CRIAR TICKET
+   /TICKET-SETUP
 ========================================================= */
 
-async function createTicket(
-  interaction: ButtonInteraction,
+export async function handleTicketSetup(
+  interaction: ChatInputCommandInteraction,
 ): Promise<void> {
   const guild =
     interaction.guild;
 
-  if (!guild) {
-    await safeReply(
-      interaction,
-      '❌ Servidor não encontrado.',
-      true,
+  if (
+    !guild
+  ) {
+    await interaction.reply({
+      content:
+        '❌ Este comando precisa ser usado dentro de um servidor.',
+
+      flags:
+        64,
+    });
+
+    return;
+  }
+
+  if (
+    !interaction.memberPermissions?.has(
+      PermissionFlagsBits.Administrator,
+    )
+  ) {
+    await interaction.reply({
+      content:
+        '⛔ Apenas administradores podem publicar a central de tickets.',
+
+      flags:
+        64,
+    });
+
+    return;
+  }
+
+  const ticketConfig =
+    await getTicketConfig(
+      guild.id,
     );
+
+  if (
+    !ticketConfig.ticketsEnabled
+  ) {
+    await interaction.reply({
+      content:
+        '⚠️ O sistema de tickets está desativado no painel.',
+
+      flags:
+        64,
+    });
+
+    return;
+  }
+
+  if (
+    !ticketConfig.ticketCategoryId
+  ) {
+    await interaction.reply({
+      content:
+        '⚠️ A categoria de tickets ainda não está configurada no painel administrativo.',
+
+      flags:
+        64,
+    });
+
+    return;
+  }
+
+  const category =
+    guild.channels.cache.get(
+      ticketConfig.ticketCategoryId,
+    );
+
+  if (
+    !category ||
+    category.type !==
+      ChannelType.GuildCategory
+  ) {
+    await interaction.reply({
+      content:
+        '⚠️ A categoria configurada não foi encontrada no Discord.',
+
+      flags:
+        64,
+    });
 
     return;
   }
 
   /*
-   * Impede múltiplos tickets para o mesmo usuário.
+   * EMBED MAIS LIMPO
    */
+  const embed =
+    new EmbedBuilder()
+      .setColor(
+        normalizeHex(
+          ticketConfig.primaryColor,
 
-  const existing =
-    guild.channels.cache.find(
-      (channel) =>
-        channel.type ===
-          ChannelType.GuildText &&
-        channel.topic?.includes(
-          `ticket-owner:${interaction.user.id}`,
+          COLORS.primary,
         ),
-    );
-
-  if (existing) {
-    await safeReply(
-      interaction,
-      `⚠️ Você já possui um atendimento aberto: ${existing}`,
-      true,
-    );
-
-    return;
-  }
-
-  /*
-   * Nome do canal.
-   */
-
-  const username =
-    interaction.user.username
-      .toLowerCase()
-      .replace(
-        /[^a-z0-9-]/g,
-        '',
       )
-      .slice(
-        0,
-        12,
+      .setTitle(
+        cleanText(
+          ticketConfig.ticketTitle,
+
+          DEFAULTS.ticketTitle,
+
+          256,
+        ),
+      )
+      .setDescription(
+        [
+          cleanText(
+            ticketConfig.ticketDescription,
+
+            DEFAULTS.ticketDescription,
+
+            1000,
+          ),
+
+          '',
+
+          'Escolha uma opção abaixo para continuar.',
+        ].join(
+          '\n',
+        ),
+      )
+      .setFooter({
+        text:
+          cleanText(
+            ticketConfig.footerText,
+
+            DEFAULTS.footerText,
+
+            2048,
+          ),
+      })
+      .setTimestamp();
+
+  await interaction.reply({
+    embeds: [
+      embed,
+    ],
+
+    components:
+      buildSetupRow(
+        ticketConfig,
+      ),
+  });
+}
+
+/* =========================================================
+   ROTEADOR
+========================================================= */
+
+export async function handleTicketButton(
+  interaction: ButtonInteraction,
+): Promise<void> {
+  switch (
+    interaction.customId
+  ) {
+    case 'ticket:create':
+      await createTicket(
+        interaction,
+        'SUPORTE',
       );
 
-  const userShortId =
-    interaction.user.id.slice(
-      -6,
+      return;
+
+    case 'ticket:finance':
+      await createTicket(
+        interaction,
+        'FINANCEIRO',
+      );
+
+      return;
+
+    case 'ticket:recruitment':
+      await createTicket(
+        interaction,
+        'RECRUTAMENTO',
+      );
+
+      return;
+
+    case 'ticket:how':
+      await showHowItWorks(
+        interaction,
+      );
+
+      return;
+
+    case 'ticket:assume':
+      await assumeTicket(
+        interaction,
+      );
+
+      return;
+
+    case 'ticket:transcript':
+      await generateTicketTranscript(
+        interaction,
+      );
+
+      return;
+
+    case 'ticket:close':
+      await closeTicket(
+        interaction,
+      );
+
+      return;
+
+    default:
+      await replyButton(
+        interaction,
+
+        '❌ Ação de ticket não reconhecida.',
+
+        true,
+      );
+  }
+}
+
+/* =========================================================
+   AJUDA
+========================================================= */
+
+async function showHowItWorks(
+  interaction: ButtonInteraction,
+): Promise<void> {
+  const ticketConfig =
+    interaction.guild
+      ? await getTicketConfig(
+          interaction.guild.id,
+        )
+      : null;
+
+  const embed =
+    new EmbedBuilder()
+      .setColor(
+        normalizeHex(
+          ticketConfig?.primaryColor,
+
+          COLORS.primary,
+        ),
+      )
+      .setTitle(
+        '❓ COMO FUNCIONA',
+      )
+      .setDescription(
+        [
+          'Escolha uma opção na central.',
+
+          '',
+
+          '🎫 **Atendimento** — suporte geral.',
+
+          '💰 **Financeiro** — assuntos financeiros.',
+
+          '👤 **Recrutamento** — processo seletivo.',
+
+          '',
+
+          'Depois de abrir, converse no canal privado criado para você.',
+        ].join(
+          '\n',
+        ),
+      )
+      .setFooter({
+        text:
+          cleanText(
+            ticketConfig?.footerText,
+
+            DEFAULTS.footerText,
+
+            2048,
+          ),
+      });
+
+  await replyEmbedButton(
+    interaction,
+
+    embed,
+
+    true,
+  );
+}
+
+/* =========================================================
+   CRIAÇÃO DO TICKET
+========================================================= */
+
+async function createTicket(
+  interaction: ButtonInteraction,
+
+  type: TicketType,
+): Promise<void> {
+  const guild =
+    interaction.guild;
+
+  if (
+    !guild
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Servidor não encontrado.',
+
+      true,
     );
 
-  const channelName =
-    `ticket-${username || 'usuario'}-${userShortId}`;
+    return;
+  }
+
+  const ticketConfig =
+    await getTicketConfig(
+      guild.id,
+    );
+
+  if (
+    !ticketConfig.ticketsEnabled
+  ) {
+    await replyButton(
+      interaction,
+
+      '⚠️ O sistema de tickets está desativado.',
+
+      true,
+    );
+
+    return;
+  }
+
+  if (
+    !ticketConfig.ticketCategoryId
+  ) {
+    await replyButton(
+      interaction,
+
+      '⚠️ A categoria de tickets ainda não foi configurada.',
+
+      true,
+    );
+
+    return;
+  }
+
+  const category =
+    guild.channels.cache.get(
+      ticketConfig.ticketCategoryId,
+    );
+
+  if (
+    !category ||
+    category.type !==
+      ChannelType.GuildCategory
+  ) {
+    await replyButton(
+      interaction,
+
+      '⚠️ A categoria configurada não existe mais no Discord.',
+
+      true,
+    );
+
+    return;
+  }
+
+  const ownerId =
+    interaction.user.id;
 
   /*
-   * Permissões básicas.
+   * Verifica se já existe ticket deste usuário.
    */
+  const existing =
+    guild.channels.cache.find(
+      (
+        channel,
+      ) => {
 
-  const overwrites:
-    OverwriteResolvable[] =
-    [
+        if (
+          channel.type !==
+          ChannelType.GuildText
+        ) {
+          return false;
+        }
+
+        return (
+          getTopicValue(
+            channel as TextChannel,
+
+            'ticket-owner',
+          ) ===
+          ownerId
+        );
+      },
+    );
+
+  if (
+    existing
+  ) {
+    await replyButton(
+      interaction,
+
+      `⚠️ Você já possui um atendimento aberto: ${existing}`,
+
+      true,
+    );
+
+    return;
+  }
+
+  await interaction.deferReply({
+    flags:
+      64,
+  });
+
+  /* =======================================================
+     NOME
+  ======================================================= */
+
+  const username =
+    cleanChannelName(
+      interaction.user.username,
+    );
+
+  const prefix =
+    type ===
+      'FINANCEIRO'
+      ? 'financeiro'
+      : type ===
+        'RECRUTAMENTO'
+        ? 'recrutamento'
+        : 'ticket';
+
+  const channelName =
+    `${prefix}-${username}-${ownerId.slice(-5)}`
+      .slice(
+        0,
+        100,
+      );
+
+  /* =======================================================
+     BOT
+  ======================================================= */
+
+  const botId =
+    interaction.client.user.id;
+
+  /* =======================================================
+     PERMISSÕES
+  ======================================================= */
+
+  let permissionOverwrites:
+    PermissionOverwriteData[];
+
+  if (
+    type ===
+    'RECRUTAMENTO'
+  ) {
+    permissionOverwrites =
+      buildRecruitmentPermissions(
+        guild.roles.everyone.id,
+
+        ownerId,
+
+        getRecruitRoleId(
+          ticketConfig,
+        ),
+
+        botId,
+      );
+  } else {
+    permissionOverwrites = [
       {
         id:
           guild.roles.everyone.id,
@@ -382,1241 +1495,1334 @@ async function createTicket(
 
       {
         id:
-          interaction.user.id,
+          ownerId,
 
         allow: [
           PermissionFlagsBits.ViewChannel,
+
           PermissionFlagsBits.SendMessages,
+
           PermissionFlagsBits.ReadMessageHistory,
+
           PermissionFlagsBits.AttachFiles,
+
           PermissionFlagsBits.EmbedLinks,
+        ],
+      },
+
+      {
+        id:
+          botId,
+
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+
+          PermissionFlagsBits.SendMessages,
+
+          PermissionFlagsBits.ReadMessageHistory,
+
+          PermissionFlagsBits.AttachFiles,
+
+          PermissionFlagsBits.EmbedLinks,
+
+          PermissionFlagsBits.ManageChannels,
+
+          PermissionFlagsBits.ManageMessages,
         ],
       },
     ];
 
-  /*
-   * Staff autorizado.
-   */
+    for (
+      const roleId of getStaffRoleIds(
+        ticketConfig,
+      )
+    ) {
+      permissionOverwrites.push({
+        id:
+          roleId,
 
-  addStaffRole(
-    overwrites,
-    config.roles.leadershipId,
-  );
+        allow: [
+          PermissionFlagsBits.ViewChannel,
 
-  addStaffRole(
-    overwrites,
-    config.roles.financeId,
-  );
+          PermissionFlagsBits.SendMessages,
 
-  addStaffRole(
-    overwrites,
-    config.roles.operationsId,
-  );
+          PermissionFlagsBits.ReadMessageHistory,
 
-  /*
-   * Metadados do canal.
-   */
+          PermissionFlagsBits.AttachFiles,
 
-  const createdAt =
-    Math.floor(
-      Date.now() /
-        1000,
-    );
+          PermissionFlagsBits.EmbedLinks,
+        ],
+      });
+    }
+  }
 
-  const topic =
-    [
-      `ticket-owner:${interaction.user.id}`,
-      'status:OPEN',
-      `created:${createdAt}`,
-    ].join(
-      ' | ',
-    );
+  /* =======================================================
+     CRIAR
+  ======================================================= */
 
-  /*
-   * Cria o ticket.
-   */
+  try {
+    const channel =
+      await guild.channels.create({
+        name:
+          channelName,
 
-  const channel =
-    await guild.channels.create({
-      name:
-        channelName,
+        type:
+          ChannelType.GuildText,
 
-      type:
-        ChannelType.GuildText,
+        parent:
+          category.id,
 
-      topic:
-        topic.slice(
-          0,
-          1024,
+        topic:
+          [
+            `ticket-owner=${ownerId}`,
+
+            `ticket-type=${type}`,
+
+            `created=${Date.now()}`,
+          ].join(
+            ';',
+          ),
+
+        permissionOverwrites,
+      });
+
+    /* =====================================================
+       RECRUTAMENTO
+    ===================================================== */
+
+    if (
+      type ===
+      'RECRUTAMENTO'
+    ) {
+      await createRecruitmentTicket(
+        interaction,
+
+        channel,
+
+        ticketConfig,
+      );
+
+      return;
+    }
+
+    /* =====================================================
+       SUPORTE / FINANCEIRO
+    ===================================================== */
+
+    const isFinance =
+      type ===
+      'FINANCEIRO';
+
+    const welcome =
+      replacePlaceholders(
+        cleanText(
+          ticketConfig.ticketWelcomeText,
+
+          DEFAULTS.ticketWelcomeText,
+
+          1500,
         ),
 
-      parent:
-        config.tickets.categoryId ||
-        undefined,
-
-      permissionOverwrites:
-        overwrites,
-    });
-
-  /*
-   * Envia o painel do ticket.
-   */
-
-  await channel.send({
-    content:
-      interaction.user.toString(),
-
-    embeds: [
-      createTicketEmbed(
         interaction,
-      ),
-    ],
+      );
 
-    components: [
-      createTicketControlButtons(),
-    ],
-
-    allowedMentions: {
-      users: [
-        interaction.user.id,
-      ],
-    },
-  });
-
-  /*
-   * Confirmação privada.
-   */
-
-  await interaction.reply({
-    embeds: [
+    const ticketEmbed =
       new EmbedBuilder()
         .setColor(
-          COLORS.success,
+          normalizeHex(
+            ticketConfig.primaryColor,
+
+            isFinance
+              ? COLORS.primary
+              : COLORS.secondary,
+          ),
+        )
+        .setTitle(
+          isFinance
+            ? '💰 ATENDIMENTO FINANCEIRO'
+            : '🎫 ATENDIMENTO',
+        )
+        .setDescription(
+          [
+            welcome,
+
+            '',
+
+            'Nossa equipe responderá neste canal.',
+
+            '',
+
+            `👤 ${interaction.user}`,
+          ].join(
+            '\n',
+          ),
+        )
+        .setFooter({
+          text:
+            cleanText(
+              ticketConfig.footerText,
+
+              DEFAULTS.footerText,
+
+              2048,
+            ),
+        })
+        .setTimestamp();
+
+    await channel.send({
+      content:
+        interaction.user.toString(),
+
+      embeds: [
+        ticketEmbed,
+      ],
+
+      components: [
+        buildManagementRow(),
+      ],
+    });
+
+    const channelUrl =
+      `https://discord.com/channels/${guild.id}/${channel.id}`;
+
+    const successEmbed =
+      new EmbedBuilder()
+        .setColor(
+          normalizeHex(
+            ticketConfig.primaryColor,
+
+            COLORS.primary,
+          ),
         )
         .setTitle(
           '✅ ATENDIMENTO CRIADO',
         )
         .setDescription(
           [
-            'Seu atendimento foi criado com sucesso.',
+            'Seu atendimento foi criado.',
+
             '',
-            `🎫 **Canal:** ${channel}`,
+
+            `🎫 [Abrir #${channel.name}](${channelUrl})`,
+
             '',
-            'Explique o que você precisa e aguarde nossa equipe.',
-          ].join('\n'),
+
+            'Nossa equipe responderá em breve.',
+          ].join(
+            '\n',
+          ),
         )
         .setFooter({
           text:
-            FOOTER,
+            cleanText(
+              ticketConfig.footerText,
+
+              DEFAULTS.footerText,
+
+              2048,
+            ),
         })
-        .setTimestamp(),
-    ],
-    ephemeral:
-      true,
-  });
-}
+        .setTimestamp();
 
-/* =========================================================
-   EMBED DO TICKET
-========================================================= */
+    await interaction.editReply({
+      embeds: [
+        successEmbed,
+      ],
+    });
 
-function createTicketEmbed(
-  interaction: ButtonInteraction,
-): EmbedBuilder {
-  return new EmbedBuilder()
-    .setColor(
-      COLORS.brand,
-    )
-    .setTitle(
-      '🎫 ATENDIMENTO ABERTO',
-    )
-    .setDescription(
-      [
-        `Olá ${interaction.user}.`,
-        '',
-        'Seu atendimento foi criado com sucesso.',
-        '',
-        'Explique abaixo o que você precisa e aguarde nossa equipe.',
-        '',
-        '🔒 **Este canal é privado.**',
-      ].join('\n'),
-    )
-    .addFields(
-      {
-        name:
-          '👤 Solicitante',
-        value:
-          `${interaction.user}`,
-        inline:
-          true,
-      },
-      {
-        name:
-          '📊 Status',
-        value:
-          '🟢 Aberto',
-        inline:
-          true,
-      },
-      {
-        name:
-          '🕐 Aberto em',
-        value:
-          `<t:${Math.floor(
-            Date.now() /
-              1000,
-          )}:F>`,
-        inline:
-          false,
-      },
-    )
-    .setFooter({
-      text:
-        `${FOOTER} • Atendimento privado`,
-    })
-    .setTimestamp();
-}
-
-/* =========================================================
-   BOTÕES DO TICKET
-========================================================= */
-
-function createTicketControlButtons(): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId(
-          'ticket:assume',
-        )
-        .setLabel(
-          'Assumir',
-        )
-        .setEmoji(
-          '🛡️',
-        )
-        .setStyle(
-          ButtonStyle.Primary,
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          'ticket:transcript',
-        )
-        .setLabel(
-          'Transcript',
-        )
-        .setEmoji(
-          '📜',
-        )
-        .setStyle(
-          ButtonStyle.Secondary,
-        ),
-
-      new ButtonBuilder()
-        .setCustomId(
-          'ticket:close',
-        )
-        .setLabel(
-          'Encerrar',
-        )
-        .setEmoji(
-          '🔒',
-        )
-        .setStyle(
-          ButtonStyle.Danger,
-        ),
+  } catch (
+    error
+  ) {
+    console.error(
+      '❌ [TICKET CREATE]',
+      error,
     );
+
+    if (
+      interaction.deferred
+    ) {
+      await interaction.editReply({
+        content:
+          '❌ Não foi possível criar o atendimento. Verifique a categoria e as permissões do bot.',
+      });
+    }
+  }
 }
 
 /* =========================================================
-   ASSUMIR
+   RECRUTAMENTO
 ========================================================= */
 
-async function assumeTicket(
+async function createRecruitmentTicket(
   interaction: ButtonInteraction,
+
+  channel: TextChannel,
+
+  ticketConfig: TicketConfig,
 ): Promise<void> {
-  if (!interaction.guild) {
-    return;
-  }
+  const candidate =
+    interaction.user;
 
-  const member =
-    await interaction.guild.members.fetch(
-      interaction.user.id,
-    );
-
-  requireAdmin(
-    member,
-  );
-
-  const channel =
-    getTicketChannel(
-      interaction,
-    );
-
-  if (!channel) {
-    return;
-  }
-
-  await updateTicketTopic(
-    channel,
-    'status',
-    'IN_PROGRESS',
-  );
-
-  await interaction.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(
-          COLORS.success,
-        )
-        .setTitle(
-          '🛡️ ATENDIMENTO ASSUMIDO',
-        )
-        .setDescription(
-          [
-            `${member} assumiu este atendimento.`,
-            '',
-            'O responsável dará continuidade à solicitação.',
-          ].join('\n'),
-        )
-        .setFooter({
-          text:
-            FOOTER,
-        })
-        .setTimestamp(),
-    ],
-  });
-}
-
-/* =========================================================
-   TRANSCRIPT MANUAL
-========================================================= */
-
-async function generateAndSendTranscript(
-  interaction: ButtonInteraction,
-): Promise<void> {
-  if (!interaction.guild) {
-    return;
-  }
-
-  const member =
-    await interaction.guild.members.fetch(
-      interaction.user.id,
-    );
-
-  requireAdmin(
-    member,
-  );
-
-  const channel =
-    getTicketChannel(
-      interaction,
-    );
-
-  if (!channel) {
-    return;
-  }
-
-  const transcriptChannel =
-    await getTranscriptChannel(
-      interaction,
-    );
-
-  if (!transcriptChannel) {
-    return;
-  }
-
-  await interaction.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(
-          COLORS.info,
-        )
-        .setTitle(
-          '📜 GERANDO TRANSCRIPT',
-        )
-        .setDescription(
-          [
-            'O histórico deste atendimento está sendo preparado.',
-            '',
-            '⏳ Aguarde alguns instantes...',
-          ].join('\n'),
-        )
-        .setFooter({
-          text:
-            FOOTER,
-        })
-        .setTimestamp(),
-    ],
-    ephemeral:
-      true,
-  });
-
-  const html =
-    await createTranscriptHtml(
-      channel,
-    );
-
-  const filePath =
-    await saveTranscript(
-      channel,
-      html,
-    );
-
-  const siteUrl =
-    getTranscriptSiteUrl(
-      channel.id,
-    );
-
-  const ownerId =
-    getTicketOwner(
-      channel,
+  const recruiterRoleId =
+    getRecruitRoleId(
+      ticketConfig,
     );
 
   const embed =
     new EmbedBuilder()
       .setColor(
-        COLORS.brand,
+        normalizeHex(
+          ticketConfig.primaryColor,
+
+          COLORS.recruitment,
+        ),
       )
       .setTitle(
-        '📜 TRANSCRIPT DO ATENDIMENTO',
+        '👤 RECRUTAMENTO',
       )
       .setDescription(
         [
-          `🎫 **Ticket:** ${channel.name}`,
+          `Olá ${candidate}!`,
+
           '',
-          `👤 **Solicitante:** ${
-            ownerId
-              ? `<@${ownerId}>`
-              : 'Desconhecido'
-          }`,
+
+          'Responda ao formulário abaixo com atenção.',
+
           '',
-          `🛡️ **Gerado por:** ${member}`,
+
+          '👔 **Um recrutador ficará responsável pelo atendimento.**',
+
           '',
-          '✅ Histórico processado e arquivado.',
-        ].join('\n'),
+
+          '━━━━━━━━━━━━━━━━',
+
+          RECRUITMENT_FORM.join(
+            '\n',
+          ),
+
+          '',
+
+          '━━━━━━━━━━━━━━━━',
+        ].join(
+          '\n',
+        ),
       )
       .setFooter({
         text:
-          `${FOOTER} • Arquivo oficial`,
+          'Ghost Syndicate • Processo de Recrutamento',
       })
       .setTimestamp();
 
-  const messageOptions: {
-    embeds: EmbedBuilder[];
-    components?: ActionRowBuilder<ButtonBuilder>[];
-    files?: Array<{
-      attachment: string;
-      name: string;
-    }>;
-  } = {
+  await channel.send({
+    content:
+      candidate.toString(),
+
     embeds: [
       embed,
     ],
-  };
 
-  /*
-   * Se o site estiver configurado,
-   * enviamos somente o botão.
-   *
-   * Caso contrário, usamos o HTML como fallback.
-   */
+    components: [
+      buildManagementRow(),
+    ],
+  });
 
-  if (siteUrl) {
-    messageOptions.components = [
-      createTranscriptLinkButton(
-        siteUrl,
-      ),
-    ];
-  } else {
-    messageOptions.files = [
-      {
-        attachment:
-          filePath,
-        name:
-          `transcript-${channel.id}.html`,
-      },
-    ];
-  }
+  const channelUrl =
+    `https://discord.com/channels/${interaction.guild!.id}/${channel.id}`;
 
-  await transcriptChannel.send(
-    messageOptions,
-  );
+  const successEmbed =
+    new EmbedBuilder()
+      .setColor(
+        COLORS.recruitment,
+      )
+      .setTitle(
+        '✅ RECRUTAMENTO ABERTO',
+      )
+      .setDescription(
+        [
+          'Seu processo de recrutamento foi criado.',
+
+          '',
+
+          `👤 **Candidato:** ${candidate}`,
+
+          '',
+
+          `🎫 [Abrir recrutamento](https://discord.com/channels/${interaction.guild!.id}/${channel.id})`,
+
+          '',
+
+          'Aguarde um recrutador assumir o atendimento.',
+        ].join(
+          '\n',
+        ),
+      )
+      .setFooter({
+        text:
+          cleanText(
+            ticketConfig.footerText,
+
+            DEFAULTS.footerText,
+
+            2048,
+          ),
+      })
+      .setTimestamp();
 
   await interaction.editReply({
     embeds: [
-      new EmbedBuilder()
-        .setColor(
-          COLORS.success,
-        )
-        .setTitle(
-          '✅ TRANSCRIPT PRONTO',
-        )
-        .setDescription(
-          [
-            'O transcript foi processado com sucesso.',
-            '',
-            siteUrl
-              ? '🌐 **Disponível no site administrativo.**'
-              : '📎 **Arquivo enviado para a central.**',
-          ].join('\n'),
-        )
-        .setFooter({
-          text:
-            FOOTER,
-        })
-        .setTimestamp(),
+      successEmbed,
     ],
   });
 }
 
 /* =========================================================
-   FECHAR TICKET
+   ASSUMIR TICKET
+========================================================= */
+
+async function assumeTicket(
+  interaction: ButtonInteraction,
+): Promise<void> {
+  if (
+    !interaction.inCachedGuild()
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Esta ação precisa ser usada dentro de um servidor.',
+
+      true,
+    );
+
+    return;
+  }
+
+  if (
+    !interaction.channel ||
+    interaction.channel.type !==
+      ChannelType.GuildText
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Este botão precisa estar dentro de um ticket.',
+
+      true,
+    );
+
+    return;
+  }
+
+  const channel =
+    interaction.channel as TextChannel;
+
+  if (
+    !isTicketChannel(
+      channel,
+    )
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Este canal não é um ticket válido.',
+
+      true,
+    );
+
+    return;
+  }
+
+  const ticketConfig =
+    await getTicketConfig(
+      interaction.guild.id,
+    );
+
+  const ticketType =
+    getTopicValue(
+      channel,
+
+      'ticket-type',
+    );
+
+  /* =======================================================
+     QUEM PODE ASSUMIR
+  ======================================================= */
+
+  if (
+    ticketType ===
+    'RECRUTAMENTO'
+  ) {
+    if (
+      !isRecruiter(
+        interaction,
+
+        ticketConfig,
+      )
+    ) {
+      await replyButton(
+        interaction,
+
+        '⛔ Apenas um recrutador pode assumir este processo.',
+
+        true,
+      );
+
+      return;
+    }
+  } else if (
+    !hasStaffPermission(
+      interaction,
+
+      ticketConfig,
+    )
+  ) {
+    await replyButton(
+      interaction,
+
+      '⛔ Você não possui permissão para assumir este atendimento.',
+
+      true,
+    );
+
+    return;
+  }
+
+  /* =======================================================
+     JÁ ASSUMIDO
+  ======================================================= */
+
+  const assigned =
+    getTopicValue(
+      channel,
+
+      'ticket-assigned',
+    );
+
+  if (
+    assigned
+  ) {
+    await replyButton(
+      interaction,
+
+      `⚠️ Este atendimento já foi assumido por <@${assigned}>.`,
+
+      true,
+    );
+
+    return;
+  }
+
+  /* =======================================================
+     RECRUTAMENTO
+     TRAVA OS OUTROS RECRUTADORES
+  ======================================================= */
+
+  if (
+    ticketType ===
+    'RECRUTAMENTO'
+  ) {
+    const recruitRole =
+      interaction.guild.roles.cache.get(
+        getRecruitRoleId(
+          ticketConfig,
+        ),
+      );
+
+    if (
+      recruitRole
+    ) {
+      /*
+       * Remove o direito de falar do cargo.
+       */
+      await channel.permissionOverwrites.edit(
+        recruitRole,
+
+        {
+          SendMessages:
+            false,
+
+          ViewChannel:
+            true,
+
+          ReadMessageHistory:
+            true,
+        },
+      );
+
+      /*
+       * Devolve o direito de falar apenas
+       * para quem assumiu.
+       */
+      await channel.permissionOverwrites.edit(
+        interaction.user.id,
+
+        {
+          ViewChannel:
+            true,
+
+          SendMessages:
+            true,
+
+          ReadMessageHistory:
+            true,
+
+          AttachFiles:
+            true,
+
+          EmbedLinks:
+            true,
+        },
+      );
+    }
+  }
+
+  /* =======================================================
+     SALVAR RESPONSÁVEL
+  ======================================================= */
+
+  const currentTopic =
+    channel.topic ??
+    '';
+
+  await channel.setTopic(
+    [
+      currentTopic,
+
+      `ticket-assigned=${interaction.user.id}`,
+    ]
+      .filter(
+        Boolean,
+      )
+      .join(
+        ';',
+      )
+      .slice(
+        0,
+        1024,
+      ),
+  );
+
+  /* =======================================================
+     CONFIRMAÇÃO
+  ======================================================= */
+
+  const embed =
+    new EmbedBuilder()
+      .setColor(
+        ticketType ===
+          'RECRUTAMENTO'
+          ? COLORS.recruitment
+          : COLORS.primary,
+      )
+      .setTitle(
+        ticketType ===
+          'RECRUTAMENTO'
+          ? '👔 RECRUTAMENTO ASSUMIDO'
+          : '🛡️ ATENDIMENTO ASSUMIDO',
+      )
+      .setDescription(
+        ticketType ===
+          'RECRUTAMENTO'
+          ? `${interaction.user} assumiu este processo de recrutamento.`
+          : `${interaction.user} assumiu este atendimento.`,
+      )
+      .setFooter({
+        text:
+          cleanText(
+            ticketConfig.footerText,
+
+            DEFAULTS.footerText,
+
+            2048,
+          ),
+      })
+      .setTimestamp();
+
+  await replyEmbedButton(
+    interaction,
+
+    embed,
+
+    false,
+  );
+}
+
+/* =========================================================
+   TRANSCRIPT
+========================================================= */
+
+async function generateTicketTranscript(
+  interaction: ButtonInteraction,
+): Promise<void> {
+  if (
+    !interaction.inCachedGuild()
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Esta ação precisa ser usada dentro de um servidor.',
+
+      true,
+    );
+
+    return;
+  }
+
+  if (
+    !interaction.channel ||
+    interaction.channel.type !==
+      ChannelType.GuildText
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Este botão precisa estar dentro de um ticket.',
+
+      true,
+    );
+
+    return;
+  }
+
+  const channel =
+    interaction.channel as TextChannel;
+
+  if (
+    !isTicketChannel(
+      channel,
+    )
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Este canal não é um ticket válido.',
+
+      true,
+    );
+
+    return;
+  }
+
+  const ticketConfig =
+    await getTicketConfig(
+      interaction.guild.id,
+    );
+
+  const ticketType =
+    getTopicValue(
+      channel,
+
+      'ticket-type',
+    );
+
+  const assigned =
+    getTopicValue(
+      channel,
+
+      'ticket-assigned',
+    );
+
+  /* =======================================================
+     RECRUTAMENTO
+  ======================================================= */
+
+  if (
+    ticketType ===
+    'RECRUTAMENTO'
+  ) {
+    if (
+      !isRecruiter(
+        interaction,
+
+        ticketConfig,
+      )
+    ) {
+      await replyButton(
+        interaction,
+
+        '⛔ Apenas recrutadores podem gerar o transcript.',
+
+        true,
+      );
+
+      return;
+    }
+
+    if (
+      assigned &&
+      assigned !==
+        interaction.user.id &&
+      !interaction.member.permissions.has(
+        PermissionFlagsBits.Administrator,
+      )
+    ) {
+      await replyButton(
+        interaction,
+
+        '⛔ Este recrutamento já foi assumido por outro recrutador.',
+
+        true,
+      );
+
+      return;
+    }
+  } else if (
+    !hasStaffPermission(
+      interaction,
+
+      ticketConfig,
+    )
+  ) {
+    await replyButton(
+      interaction,
+
+      '⛔ Você não possui permissão para gerar o transcript.',
+
+      true,
+    );
+
+    return;
+  }
+
+  await interaction.deferReply({
+    flags:
+      64,
+  });
+
+  try {
+    const transcriptPath =
+      await createTranscript(
+        channel,
+
+        interaction.user.tag,
+      );
+
+    let transcriptUrl:
+      | string
+      | null =
+      null;
+
+    if (
+      ticketConfig.transcriptChannelId
+    ) {
+      const transcriptChannel =
+        interaction.guild.channels.cache.get(
+          ticketConfig.transcriptChannelId,
+        );
+
+      if (
+        transcriptChannel &&
+        transcriptChannel.type ===
+          ChannelType.GuildText
+      ) {
+        const archiveMessage =
+          await transcriptChannel.send({
+            content:
+              [
+                `📜 **Transcript de ${channel.name}**`,
+
+                `👤 **Gerado por:** ${interaction.user}`,
+
+                ticketType ===
+                  'RECRUTAMENTO'
+                  ? '👔 **Tipo:** Recrutamento'
+                  : '',
+              ]
+                .filter(
+                  Boolean,
+                )
+                .join(
+                  '\n',
+                ),
+
+            files: [
+              transcriptPath,
+            ],
+          });
+
+        transcriptUrl =
+          archiveMessage.attachments.first()
+            ?.url ??
+          null;
+      }
+    }
+
+    const embed =
+      new EmbedBuilder()
+        .setColor(
+          ticketType ===
+            'RECRUTAMENTO'
+            ? COLORS.recruitment
+            : COLORS.primary,
+        )
+        .setTitle(
+          '📜 TRANSCRIPT GERADO',
+        )
+        .setDescription(
+          transcriptUrl
+            ? [
+                'O histórico foi salvo com sucesso.',
+
+                '',
+
+                'Clique no botão abaixo para abrir o transcript.',
+
+                '',
+
+                `👤 **Gerado por:** ${interaction.user}`,
+              ].join(
+                '\n',
+              )
+            : [
+                'O histórico foi processado.',
+
+                '',
+
+                '⚠️ O canal de transcript não retornou o arquivo.',
+
+                '',
+
+                `👤 **Gerado por:** ${interaction.user}`,
+              ].join(
+                '\n',
+              ),
+        )
+        .setFooter({
+          text:
+            cleanText(
+              ticketConfig.footerText,
+
+              DEFAULTS.footerText,
+
+              2048,
+            ),
+        })
+        .setTimestamp();
+
+    const components =
+      transcriptUrl
+        ? [
+            new ActionRowBuilder<ButtonBuilder>()
+              .addComponents(
+                new ButtonBuilder()
+                  .setLabel(
+                    'Abrir Transcript',
+                  )
+                  .setEmoji(
+                    '🌐',
+                  )
+                  .setStyle(
+                    ButtonStyle.Link,
+                  )
+                  .setURL(
+                    transcriptUrl,
+                  ),
+              ),
+          ]
+        : [];
+
+    await interaction.editReply({
+      embeds: [
+        embed,
+      ],
+
+      components,
+    });
+
+  } catch (
+    error
+  ) {
+    console.error(
+      '❌ [TICKET TRANSCRIPT]',
+      error,
+    );
+
+    await interaction.editReply({
+      content:
+        '❌ Não foi possível gerar o transcript.',
+    });
+  }
+}
+
+/* =========================================================
+   ENCERRAR
 ========================================================= */
 
 async function closeTicket(
   interaction: ButtonInteraction,
 ): Promise<void> {
-  if (!interaction.guild) {
+  if (
+    !interaction.inCachedGuild()
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Esta ação precisa ser usada dentro de um servidor.',
+
+      true,
+    );
+
+    return;
+  }
+
+  if (
+    !interaction.channel ||
+    interaction.channel.type !==
+      ChannelType.GuildText
+  ) {
+    await replyButton(
+      interaction,
+
+      '❌ Este botão precisa estar dentro de um ticket.',
+
+      true,
+    );
+
     return;
   }
 
   const channel =
-    getTicketChannel(
+    interaction.channel as TextChannel;
+
+  if (
+    !isTicketChannel(
+      channel,
+    )
+  ) {
+    await replyButton(
       interaction,
+
+      '❌ Este canal não é um ticket válido.',
+
+      true,
     );
 
-  if (!channel) {
     return;
   }
 
-  const member =
-    await interaction.guild.members.fetch(
-      interaction.user.id,
+  const ticketConfig =
+    await getTicketConfig(
+      interaction.guild.id,
+    );
+
+  const ticketType =
+    getTopicValue(
+      channel,
+
+      'ticket-type',
     );
 
   const ownerId =
-    getTicketOwner(
+    getTopicValue(
       channel,
+
+      'ticket-owner',
     );
 
-  const isAdmin =
-    canUseAdminControls(
-      member,
+  const assigned =
+    getTopicValue(
+      channel,
+
+      'ticket-assigned',
     );
 
-  /*
-   * Solicitante ou staff podem encerrar.
-   */
+  /* =======================================================
+     AUTORIZAÇÃO
+  ======================================================= */
 
   if (
-    !isAdmin &&
-    ownerId !==
-      interaction.user.id
+    ticketType ===
+    'RECRUTAMENTO'
   ) {
-    await safeReply(
-      interaction,
-      '❌ Apenas o solicitante ou a equipe autorizada pode encerrar este atendimento.',
-      true,
-    );
+    const recruiter =
+      isRecruiter(
+        interaction,
 
-    return;
-  }
-
-  const transcriptChannel =
-    await getTranscriptChannel(
-      interaction,
-    );
-
-  if (!transcriptChannel) {
-    return;
-  }
-
-  await interaction.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(
-          COLORS.warning,
-        )
-        .setTitle(
-          '🔒 ENCERRANDO ATENDIMENTO',
-        )
-        .setDescription(
-          [
-            'Estamos finalizando este atendimento.',
-            '',
-            '📜 Gerando transcript...',
-            '💾 Arquivando histórico...',
-          ].join('\n'),
-        )
-        .setFooter({
-          text:
-            FOOTER,
-        })
-        .setTimestamp(),
-    ],
-    ephemeral:
-      true,
-  });
-
-  try {
-    /*
-     * Gera o transcript como HTML.
-     */
-
-    const html =
-      await createTranscriptHtml(
-        channel,
+        ticketConfig,
       );
 
-    /*
-     * Salva no servidor.
-     */
-
-    const filePath =
-      await saveTranscript(
-        channel,
-        html,
+    const administrator =
+      interaction.member.permissions.has(
+        PermissionFlagsBits.Administrator,
       );
 
-    /*
-     * URL do site, quando configurada.
-     */
+    if (
+      !recruiter &&
+      !administrator
+    ) {
+      await replyButton(
+        interaction,
 
-    const siteUrl =
-      getTranscriptSiteUrl(
-        channel.id,
+        '⛔ Somente um recrutador pode encerrar este processo.',
+
+        true,
       );
 
-    /*
-     * Embed administrativo.
-     */
-
-    const archiveEmbed =
-      new EmbedBuilder()
-        .setColor(
-          COLORS.danger,
-        )
-        .setTitle(
-          '🔒 ATENDIMENTO ENCERRADO',
-        )
-        .setDescription(
-          [
-            `🎫 **Ticket:** ${channel.name}`,
-            '',
-            `👤 **Solicitante:** ${
-              ownerId
-                ? `<@${ownerId}>`
-                : 'Desconhecido'
-            }`,
-            '',
-            `🛡️ **Encerrado por:** ${member}`,
-            '',
-            '📜 **Transcript:** ✅ Gerado',
-            '💾 **Arquivo:** ✅ Arquivado',
-          ].join('\n'),
-        )
-        .setFooter({
-          text:
-            `${FOOTER} • Atendimento encerrado`,
-        })
-        .setTimestamp();
-
-    const archiveOptions: {
-      embeds: EmbedBuilder[];
-      components?: ActionRowBuilder<ButtonBuilder>[];
-      files?: Array<{
-        attachment: string;
-        name: string;
-      }>;
-    } = {
-      embeds: [
-        archiveEmbed,
-      ],
-    };
-
-    if (siteUrl) {
-      archiveOptions.components = [
-        createTranscriptLinkButton(
-          siteUrl,
-        ),
-      ];
-    } else {
-      archiveOptions.files = [
-        {
-          attachment:
-            filePath,
-          name:
-            `transcript-${channel.id}.html`,
-        },
-      ];
+      return;
     }
 
-    await transcriptChannel.send(
-      archiveOptions,
-    );
+    if (
+      assigned &&
+      assigned !==
+        interaction.user.id &&
+      !administrator
+    ) {
+      await replyButton(
+        interaction,
 
-    await updateTicketTopic(
-      channel,
-      'status',
-      'CLOSED',
-    );
+        '⛔ Este recrutamento já foi assumido por outro recrutador.',
 
-    await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(
-            COLORS.success,
-          )
-          .setTitle(
-            '✅ ATENDIMENTO ENCERRADO',
-          )
-          .setDescription(
-            [
-              'O atendimento foi encerrado com sucesso.',
-              '',
-              '📜 Transcript gerado.',
-              '💾 Histórico arquivado.',
-              siteUrl
-                ? '🌐 Link disponível no site.'
-                : '📎 Arquivo enviado para a central.',
-              '',
-              '🗑️ Este canal será removido em alguns segundos.',
-            ].join('\n'),
-          )
-          .setFooter({
-            text:
-              FOOTER,
-          })
-          .setTimestamp(),
-      ],
-    });
+        true,
+      );
 
-    /*
-     * Remove o canal depois que tudo foi arquivado.
-     */
+      return;
+    }
+  } else {
+    if (
+      !hasStaffPermission(
+        interaction,
 
-    setTimeout(
-      () => {
-        channel
-          .delete(
-            'Ticket encerrado e transcript arquivado.',
-          )
-          .catch(
-            (error) => {
-              console.error(
-                '❌ [TICKET DELETE]',
-                error,
-              );
-            },
-          );
-      },
-      4000,
-    );
-  } catch (error) {
+        ticketConfig,
+      ) &&
+      ownerId !==
+        interaction.user.id
+    ) {
+      await replyButton(
+        interaction,
+
+        '⛔ Você não possui permissão para encerrar este atendimento.',
+
+        true,
+      );
+
+      return;
+    }
+  }
+
+  await interaction.deferReply({
+    flags:
+      64,
+  });
+
+  let transcriptPath:
+    | string
+    | null =
+      null;
+
+  let transcriptUrl:
+    | string
+    | null =
+      null;
+
+  /* =======================================================
+     TRANSCRIPT
+  ======================================================= */
+
+  try {
+    transcriptPath =
+      await createTranscript(
+        channel,
+
+        interaction.user.tag,
+      );
+  } catch (
+    error
+  ) {
     console.error(
-      '❌ [TICKET CLOSE]',
+      '⚠️ [CLOSE TRANSCRIPT]',
       error,
     );
-
-    await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(
-            COLORS.danger,
-          )
-          .setTitle(
-            '⚠️ ERRO AO ENCERRAR',
-          )
-          .setDescription(
-            [
-              'Não foi possível finalizar o atendimento.',
-              '',
-              `❌ ${
-                error instanceof Error
-                  ? error.message
-                  : 'Erro desconhecido.'
-              }`,
-              '',
-              '🛑 O canal foi mantido para evitar perda do histórico.',
-            ].join('\n'),
-          )
-          .setFooter({
-            text:
-              FOOTER,
-          })
-          .setTimestamp(),
-      ],
-    });
-  }
-}
-
-/* =========================================================
-   GERAÇÃO DO TRANSCRIPT
-========================================================= */
-
-async function createTranscriptHtml(
-  channel: TextChannel,
-): Promise<string> {
-  const html =
-    await discordTranscripts.createTranscript(
-      channel,
-      {
-        returnType:
-          discordTranscripts
-            .ExportReturnType
-            .String,
-
-        filename:
-          `transcript-${channel.id}.html`,
-
-        limit:
-          -1,
-
-        saveAssets:
-          true,
-
-        assets: {
-          attachments:
-            true,
-
-          embeds:
-            true,
-
-          avatars:
-            true,
-
-          emojis:
-            true,
-
-          guildIcons:
-            true,
-
-          inviteIcons:
-            true,
-
-          roleIcons:
-            true,
-
-          serverTagBadges:
-            true,
-        },
-
-        features: {
-          search:
-            true,
-
-          imagePreview:
-            true,
-
-          spoilerReveal:
-            true,
-
-          messageLinks:
-            true,
-
-          profileBadges:
-            true,
-
-          embedTweaks:
-            true,
-        },
-
-        poweredBy:
-          false,
-
-        footerText:
-          'Ghost Syndicate • Transcript oficial',
-      },
-    );
-
-  return html;
-}
-
-/* =========================================================
-   SALVAR TRANSCRIPT
-========================================================= */
-
-async function saveTranscript(
-  channel: TextChannel,
-  html: string,
-): Promise<string> {
-  const directory =
-    path.join(
-      process.cwd(),
-      'storage',
-      'transcripts',
-    );
-
-  await mkdir(
-    directory,
-    {
-      recursive:
-        true,
-    },
-  );
-
-  const filePath =
-    path.join(
-      directory,
-      `transcript-${channel.id}.html`,
-    );
-
-  await writeFile(
-    filePath,
-    html,
-    'utf8',
-  );
-
-  return filePath;
-}
-
-/* =========================================================
-   CANAL DE TRANSCRIPTS
-========================================================= */
-
-async function getTranscriptChannel(
-  interaction: ButtonInteraction,
-): Promise<TextChannel | null> {
-  if (!interaction.guild) {
-    await safeReply(
-      interaction,
-      '❌ Servidor não encontrado.',
-      true,
-    );
-
-    return null;
   }
 
-  const channelId =
-    config.tickets
-      .transcriptsChannelId;
-
-  if (!channelId) {
-    await safeReply(
-      interaction,
-      '❌ `TRANSCRIPT_CHANNEL_ID` não está configurado no .env.',
-      true,
-    );
-
-    return null;
-  }
-
-  const channel =
-    await interaction.guild.channels.fetch(
-      channelId,
-    );
+  /* =======================================================
+     ARQUIVAR
+  ======================================================= */
 
   if (
-    !channel ||
-    channel.type !==
-      ChannelType.GuildText
+    transcriptPath &&
+    ticketConfig.transcriptChannelId
   ) {
-    await safeReply(
-      interaction,
-      '❌ O canal configurado para transcripts não existe ou não é um canal de texto.',
-      true,
-    );
+    try {
+      const transcriptChannel =
+        interaction.guild.channels.cache.get(
+          ticketConfig.transcriptChannelId,
+        );
 
-    return null;
+      if (
+        transcriptChannel &&
+        transcriptChannel.type ===
+          ChannelType.GuildText
+      ) {
+        const archiveMessage =
+          await transcriptChannel.send({
+            content:
+              [
+                `📜 **Transcript de ${channel.name}**`,
+
+                ownerId
+                  ? `👤 **Solicitante:** <@${ownerId}>`
+                  : '👤 **Solicitante:** Não identificado',
+
+                `🔒 **Encerrado por:** ${interaction.user}`,
+
+                ticketType ===
+                  'RECRUTAMENTO'
+                  ? '👔 **Tipo:** Recrutamento'
+                  : '',
+              ]
+                .filter(
+                  Boolean,
+                )
+                .join(
+                  '\n',
+                ),
+
+            files: [
+              transcriptPath,
+            ],
+          });
+
+        transcriptUrl =
+          archiveMessage.attachments.first()
+            ?.url ??
+          null;
+      }
+    } catch (
+      error
+    ) {
+      console.error(
+        '⚠️ [TRANSCRIPT ARCHIVE]',
+        error,
+      );
+    }
   }
 
-  return channel;
-}
+  /* =======================================================
+     LINK
+  ======================================================= */
 
-/* =========================================================
-   LINK DO SITE
-========================================================= */
+  const channelUrl =
+    `https://discord.com/channels/${interaction.guild.id}/${channel.id}`;
 
-function getTranscriptSiteUrl(
-  ticketId: string,
-): string | null {
-  const baseUrl =
-    process.env.WEB_PUBLIC_URL?.trim();
+  /* =======================================================
+     EMBED FINAL
+  ======================================================= */
 
-  if (!baseUrl) {
-    return null;
-  }
+  const embed =
+    new EmbedBuilder()
+      .setColor(
+        ticketType ===
+          'RECRUTAMENTO'
+          ? COLORS.recruitment
+          : COLORS.primary,
+      )
+      .setTitle(
+        ticketType ===
+          'RECRUTAMENTO'
+          ? '🔒 RECRUTAMENTO ENCERRADO'
+          : '🔒 ATENDIMENTO ENCERRADO',
+      )
+      .setDescription(
+        [
+          ticketType ===
+            'RECRUTAMENTO'
+            ? 'O processo de recrutamento foi encerrado.'
+            : 'O atendimento foi encerrado.',
 
-  const clean =
-    baseUrl.replace(
-      /\/+$/,
-      '',
-    );
+          '',
 
-  return `${clean}/transcripts/${ticketId}`;
-}
+          `🎫 **Canal:** [#${channel.name}](${channelUrl})`,
 
-/* =========================================================
-   BOTÃO DO SITE
-========================================================= */
+          '',
 
-function createTranscriptLinkButton(
-  url: string,
-): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>()
-    .addComponents(
-      new ButtonBuilder()
-        .setLabel(
-          'Abrir Transcript',
-        )
-        .setEmoji(
-          '🌐',
-        )
-        .setStyle(
-          ButtonStyle.Link,
-        )
-        .setURL(
-          url,
+          transcriptUrl
+            ? '📜 **Transcript:** o histórico foi preservado com sucesso.'
+            : transcriptPath
+              ? '📜 **Transcript:** gerado, mas não foi possível obter o link do arquivo.'
+              : '📜 **Transcript:** não foi possível gerar.',
+
+          '',
+
+          ticketType ===
+            'RECRUTAMENTO'
+            ? '👔 O processo poderá ser analisado pela equipe.'
+            : '✅ Obrigado por utilizar a Central de Atendimento.',
+
+          '',
+
+          `👤 **Encerrado por:** ${interaction.user}`,
+        ].join(
+          '\n',
         ),
-    );
-}
+      )
+      .setFooter({
+        text:
+          cleanText(
+            ticketConfig.footerText,
 
-/* =========================================================
-   INFORMAÇÕES GERAIS
-========================================================= */
+            DEFAULTS.footerText,
 
-async function showGeneralInfo(
-  interaction: ButtonInteraction,
-): Promise<void> {
-  await interaction.reply({
+            2048,
+          ),
+      })
+      .setTimestamp();
+
+  const components =
+    transcriptUrl
+      ? [
+          new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(
+              new ButtonBuilder()
+                .setLabel(
+                  'Abrir Transcript',
+                )
+                .setEmoji(
+                  '🌐',
+                )
+                .setStyle(
+                  ButtonStyle.Link,
+                )
+                .setURL(
+                  transcriptUrl,
+                ),
+            ),
+        ]
+      : [];
+
+  /*
+   * UMA ÚNICA RESPOSTA.
+   */
+  await interaction.editReply({
     embeds: [
-      new EmbedBuilder()
-        .setColor(
-          COLORS.info,
-        )
-        .setTitle(
-          '❔ COMO FUNCIONA',
-        )
-        .setDescription(
-          [
-            '## 🎫 CENTRAL DE ATENDIMENTO',
-            '',
-            '1️⃣ Clique em **Abrir Atendimento**.',
-            '',
-            '2️⃣ O sistema cria um canal privado.',
-            '',
-            '3️⃣ Explique o que você precisa.',
-            '',
-            '4️⃣ Nossa equipe assume o atendimento.',
-            '',
-            '5️⃣ Quando terminar, o ticket será encerrado.',
-            '',
-            '6️⃣ O histórico será transformado em transcript.',
-            '',
-            '🔒 **Seu atendimento permanece privado.**',
-          ].join('\n'),
-        )
-        .setFooter({
-          text:
-            FOOTER,
-        })
-        .setTimestamp(),
+      embed,
     ],
-    ephemeral:
-      true,
+
+    components,
   });
-}
 
-/* =========================================================
-   FINANCEIRO
-========================================================= */
+  /* =======================================================
+     EXCLUIR
+  ======================================================= */
 
-async function showFinanceInfo(
-  interaction: ButtonInteraction,
-): Promise<void> {
-  await interaction.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(
-          COLORS.success,
+  setTimeout(
+    () => {
+
+      void channel
+        .delete(
+          'Atendimento encerrado',
         )
-        .setTitle(
-          '💰 ATENDIMENTO FINANCEIRO',
-        )
-        .setDescription(
-          [
-            '> Para assuntos financeiros, abra um atendimento e explique sua solicitação.',
-            '',
-            'Podemos tratar de:',
-            '',
-            '💰 Caixa',
-            '📥 Entradas',
-            '📤 Saídas',
-            '💳 Empréstimos',
-            '📊 Movimentações',
-          ].join('\n'),
-        )
-        .setFooter({
-          text:
-            FOOTER,
-        })
-        .setTimestamp(),
-    ],
-    ephemeral:
-      true,
-  });
-}
+        .catch(
+          (
+            error,
+          ) => {
 
-/* =========================================================
-   VALIDAR TICKET
-========================================================= */
+            console.error(
+              '❌ [TICKET DELETE]',
+              error,
+            );
+          },
+        );
 
-function getTicketChannel(
-  interaction: ButtonInteraction,
-): TextChannel | null {
-  const channel =
-    interaction.channel;
-
-  if (
-    !channel ||
-    channel.type !==
-      ChannelType.GuildText
-  ) {
-    void safeReply(
-      interaction,
-      '❌ Esta ação precisa ser usada dentro de um ticket.',
-      true,
-    );
-
-    return null;
-  }
-
-  if (
-    !channel.topic?.includes(
-      'ticket-owner:',
-    )
-  ) {
-    void safeReply(
-      interaction,
-      '❌ Este canal não foi identificado como um ticket da Ghost Syndicate.',
-      true,
-    );
-
-    return null;
-  }
-
-  return channel;
-}
-
-/* =========================================================
-   DONO DO TICKET
-========================================================= */
-
-function getTicketOwner(
-  channel: TextChannel,
-): string | null {
-  const topic =
-    channel.topic ?? '';
-
-  const match =
-    topic.match(
-      /ticket-owner:(\d+)/,
-    );
-
-  return match?.[1] ?? null;
-}
-
-/* =========================================================
-   STAFF
-========================================================= */
-
-function addStaffRole(
-  overwrites:
-    OverwriteResolvable[],
-  roleId:
-    | string
-    | undefined,
-): void {
-  if (!roleId) {
-    return;
-  }
-
-  overwrites.push({
-    id:
-      roleId,
-
-    allow: [
-      PermissionFlagsBits.ViewChannel,
-      PermissionFlagsBits.SendMessages,
-      PermissionFlagsBits.ReadMessageHistory,
-      PermissionFlagsBits.AttachFiles,
-      PermissionFlagsBits.EmbedLinks,
-      PermissionFlagsBits.ManageMessages,
-    ],
-  });
-}
-
-function canUseAdminControls(
-  member: GuildMember,
-): boolean {
-  try {
-    requireAdmin(
-      member,
-    );
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/* =========================================================
-   ATUALIZAR TOPIC
-========================================================= */
-
-async function updateTicketTopic(
-  channel: TextChannel,
-  key: string,
-  value: string,
-): Promise<void> {
-  const topic =
-    channel.topic ?? '';
-
-  const pattern =
-    new RegExp(
-      `${key}:[^|]+`,
-    );
-
-  const next =
-    pattern.test(topic)
-      ? topic.replace(
-          pattern,
-          `${key}:${value}`,
-        )
-      : `${topic} | ${key}:${value}`;
-
-  await channel.setTopic(
-    next.slice(
-      0,
-      1024,
-    ),
+    },
+    3500,
   );
-}
-
-/* =========================================================
-   RESPOSTA SEGURA
-========================================================= */
-
-async function safeReply(
-  interaction: ButtonInteraction,
-  content: string,
-  ephemeral = false,
-): Promise<void> {
-  if (
-    interaction.replied ||
-    interaction.deferred
-  ) {
-    await interaction.followUp({
-      content,
-      ephemeral,
-    });
-
-    return;
-  }
-
-  await interaction.reply({
-    content,
-    ephemeral,
-  });
 }

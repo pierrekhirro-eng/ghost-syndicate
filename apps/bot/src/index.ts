@@ -1,5 +1,3 @@
-// apps/bot/src/index.ts
-
 import {
   Client,
   GatewayIntentBits,
@@ -21,43 +19,49 @@ import {
 
 import {
   onVoiceState,
+  reconcileGuildVoice,
 } from './events/voiceState.js';
 
 /* =========================================================
    CLIENT DISCORD
 ========================================================= */
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates,
-  ],
+const client =
+  new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildVoiceStates,
+    ],
 
-  partials: [
-    Partials.Channel,
-    Partials.Message,
-    Partials.GuildMember,
-    Partials.User,
-  ],
-});
+    partials: [
+      Partials.Channel,
+      Partials.Message,
+      Partials.GuildMember,
+      Partials.User,
+    ],
+  });
 
 /* =========================================================
-   INTERAÇÕES
+   INTERACTIONS
 ========================================================= */
 
 client.on(
   'interactionCreate',
-  async (interaction) => {
+  async (
+    interaction,
+  ) => {
     try {
       await onInteraction(
         interaction,
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
-        '❌ Erro ao processar interação:',
+        '❌ [INTERACTION] Erro:',
         error,
       );
     }
@@ -65,25 +69,70 @@ client.on(
 );
 
 /* =========================================================
-   VOICE TRACKER
+   VOICE STATE UPDATE
 ========================================================= */
 
 client.on(
   'voiceStateUpdate',
-  async (oldState, newState) => {
+  async (
+    oldState,
+    newState,
+  ) => {
     try {
       await onVoiceState(
         oldState,
         newState,
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
-        '❌ Erro ao processar voiceStateUpdate:',
+        '❌ [VOICE EVENT] Erro:',
         error,
       );
     }
   },
 );
+
+/* =========================================================
+   RECONCILIAR TODOS OS SERVIDORES
+========================================================= */
+
+let reconciliationRunning =
+  false;
+
+async function reconcileAllGuilds(): Promise<void> {
+  if (
+    reconciliationRunning
+  ) {
+    return;
+  }
+
+  reconciliationRunning =
+    true;
+
+  try {
+    for (
+      const guild of client.guilds.cache.values()
+    ) {
+      await reconcileGuildVoice(
+        guild,
+      );
+    }
+
+  } catch (
+    error
+  ) {
+    console.error(
+      '❌ [VOICE] Erro na reconciliação geral:',
+      error,
+    );
+
+  } finally {
+    reconciliationRunning =
+      false;
+  }
+}
 
 /* =========================================================
    READY
@@ -91,7 +140,9 @@ client.on(
 
 client.once(
   'ready',
-  async (readyClient) => {
+  async (
+    readyClient,
+  ) => {
     console.log('');
     console.log(
       '👻 ========================================',
@@ -120,26 +171,81 @@ client.once(
 
     printConfig();
 
+    /*
+     * =====================================================
+     * REGISTRAR COMMANDS
+     * =====================================================
+     */
+
     try {
       await registerCommands();
 
       console.log(
         '✅ Slash commands sincronizados.',
       );
-    } catch (error) {
+
+    } catch (
+      error
+    ) {
       console.error('');
       console.error(
         '❌ Falha ao sincronizar os slash commands.',
       );
       console.error('');
-      console.error(error);
+      console.error(
+        error,
+      );
       console.error('');
     }
 
+    /*
+     * =====================================================
+     * PEQUENO DELAY
+     * =====================================================
+     *
+     * Dá tempo para o cache de VoiceState estabilizar
+     * após o READY.
+     */
+
+    setTimeout(
+      () => {
+        void reconcileAllGuilds();
+      },
+      2_000,
+    );
+
+    /*
+     * =====================================================
+     * RECONCILIAÇÃO AUTOMÁTICA
+     * =====================================================
+     *
+     * A cada 10 segundos:
+     *
+     * Discord
+     *   ↓
+     * VoiceState
+     *   ↓
+     * banco
+     *
+     * Assim uma sessão fantasma é corrigida
+     * automaticamente.
+     */
+
+    setInterval(
+      () => {
+        void reconcileAllGuilds();
+      },
+      10_000,
+    );
+
+    console.log(
+      '🛡️ [VOICE] Reconciliação automática ativa a cada 10s.',
+    );
+
+    console.log('');
     console.log(
       '🚀 Ghost Syndicate iniciado com sucesso.',
     );
-
     console.log('');
   },
 );
@@ -150,25 +256,27 @@ client.once(
 
 client.on(
   'error',
-  (error) => {
-    console.error('');
+  (
+    error,
+  ) => {
     console.error(
-      '❌ Erro no cliente Discord:',
+      '❌ [CLIENT] Erro do Discord:',
+      error,
     );
-    console.error(error);
-    console.error('');
   },
 );
 
 /* =========================================================
-   AVISOS DO DISCORD.JS
+   WARNING
 ========================================================= */
 
 client.on(
   'warn',
-  (message) => {
+  (
+    message,
+  ) => {
     console.warn(
-      '⚠️ Discord.js:',
+      '⚠️ [DISCORD]',
       message,
     );
   },
@@ -180,13 +288,15 @@ client.on(
 
 client.on(
   'debug',
-  (message) => {
+  (
+    message,
+  ) => {
     if (
       process.env.NODE_ENV ===
       'development'
     ) {
       console.debug(
-        '🔎 Discord.js:',
+        '🔎 [DEBUG]',
         message,
       );
     }
@@ -194,41 +304,39 @@ client.on(
 );
 
 /* =========================================================
-   PROMISES NÃO TRATADAS
+   UNHANDLED REJECTION
 ========================================================= */
 
 process.on(
   'unhandledRejection',
-  (error) => {
-    console.error('');
+  (
+    error,
+  ) => {
     console.error(
-      '❌ Unhandled Rejection:',
+      '❌ [UNHANDLED REJECTION]',
+      error,
     );
-    console.error(error);
-    console.error('');
   },
 );
 
 /* =========================================================
-   EXCEÇÕES NÃO TRATADAS
+   UNCAUGHT EXCEPTION
 ========================================================= */
 
 process.on(
   'uncaughtException',
-  (error) => {
-    console.error('');
+  (
+    error,
+  ) => {
     console.error(
-      '❌ Uncaught Exception:',
+      '❌ [UNCAUGHT EXCEPTION]',
+      error,
     );
-    console.error(error);
-    console.error('');
-
-    process.exit(1);
   },
 );
 
 /* =========================================================
-   ENCERRAMENTO SEGURO
+   SHUTDOWN
 ========================================================= */
 
 async function shutdown(
@@ -238,27 +346,33 @@ async function shutdown(
   console.log(
     `🛑 ${signal} recebido.`,
   );
-
   console.log(
     '👻 Encerrando Ghost Syndicate...',
   );
 
   try {
-    if (client.isReady()) {
+    if (
+      client.isReady()
+    ) {
       client.destroy();
     }
 
     console.log(
       '✅ Bot encerrado com segurança.',
     );
-  } catch (error) {
+
+  } catch (
+    error
+  ) {
     console.error(
-      '❌ Erro ao encerrar o bot:',
+      '❌ Erro durante shutdown:',
       error,
     );
   }
 
-  process.exit(0);
+  process.exit(
+    0,
+  );
 }
 
 /* =========================================================
@@ -268,14 +382,18 @@ async function shutdown(
 process.on(
   'SIGINT',
   () => {
-    void shutdown('SIGINT');
+    void shutdown(
+      'SIGINT',
+    );
   },
 );
 
 process.on(
   'SIGTERM',
   () => {
-    void shutdown('SIGTERM');
+    void shutdown(
+      'SIGTERM',
+    );
   },
 );
 
@@ -293,14 +411,22 @@ client
   .login(
     config.discord.token,
   )
-  .catch((error) => {
-    console.error('');
-    console.error(
-      '❌ Não foi possível conectar ao Discord.',
-    );
-    console.error('');
-    console.error(error);
-    console.error('');
+  .catch(
+    (
+      error,
+    ) => {
+      console.error('');
+      console.error(
+        '❌ Não foi possível conectar ao Discord.',
+      );
+      console.error('');
+      console.error(
+        error,
+      );
+      console.error('');
 
-    process.exit(1);
-  });
+      process.exit(
+        1,
+      );
+    },
+  );

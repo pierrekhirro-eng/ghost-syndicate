@@ -6,75 +6,20 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 
-import {
-  config,
-} from '../utils/config.js';
-
-import {
-  adminCommand,
-} from './admin.js';
-
-import {
-  financeCommand,
-} from './finance.js';
-
-import {
-  operationsCommand,
-} from './operations.js';
-
-import {
-  missionsCommand,
-} from './missions.js';
-
-import {
-  loansCommand,
-} from './loans.js';
-
-import {
-  rankingCommand,
-} from './ranking.js';
-
-import {
-  rewardsCommand,
-} from './rewards.js';
-
-import {
-  ticketsCommand,
-} from './tickets.js';
-
-import {
-  membersCommand,
-} from './members.js';
-
-import {
-  configCommand,
-} from './config.js';
-
-import {
-  moderationCommand,
-} from './moderation.js';
+import { config } from '../utils/config.js';
 
 /* =========================================================
-   COMANDOS
-========================================================= */
+   COMANDOS PRINCIPAIS
+   =========================================================
+   Mantemos somente os comandos realmente necessários.
 
-/*
- * Os comandos antigos simples continuam existindo porque
- * já são usados pelo sistema:
- *
- * /caixa
- * /entrada
- * /saida
- * /horas
- * /ranking-voz
- *
- * Os módulos novos entram abaixo.
- */
+   O restante das configurações ficará no painel Web.
+========================================================= */
 
 const commands = [
 
   /* =======================================================
-     FINANCEIRO BÁSICO
+     CAIXA
   ======================================================= */
 
   new SlashCommandBuilder()
@@ -82,6 +27,10 @@ const commands = [
     .setDescription(
       'Mostra o saldo atual da Ghost Syndicate.',
     ),
+
+  /* =======================================================
+     ENTRADA
+  ======================================================= */
 
   new SlashCommandBuilder()
     .setName('entrada')
@@ -107,6 +56,10 @@ const commands = [
         .setMaxLength(200),
     ),
 
+  /* =======================================================
+     SAÍDA
+  ======================================================= */
+
   new SlashCommandBuilder()
     .setName('saida')
     .setDescription(
@@ -131,10 +84,63 @@ const commands = [
         .setMaxLength(200),
     ),
 
-  financeCommand,
+  /* =======================================================
+     EMPRÉSTIMO
+  ======================================================= */
+
+  new SlashCommandBuilder()
+    .setName('emprestimo')
+    .setDescription(
+      'Registra um novo empréstimo.',
+    )
+    .addStringOption((option) =>
+      option
+        .setName('tipo')
+        .setDescription(
+          'Tipo do empréstimo.',
+        )
+        .setRequired(true)
+        .addChoices(
+          {
+            name: 'Dinheiro',
+            value: 'DINHEIRO',
+          },
+          {
+            name: 'Veículo',
+            value: 'VEICULO',
+          },
+        ),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('valor')
+        .setDescription(
+          'Valor ou veículo emprestado.',
+        )
+        .setRequired(true)
+        .setMaxLength(150),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('prazo')
+        .setDescription(
+          'Prazo para devolução.',
+        )
+        .setRequired(true)
+        .setMaxLength(100),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('juros')
+        .setDescription(
+          'Juros do empréstimo.',
+        )
+        .setRequired(false)
+        .setMaxLength(50),
+    ),
 
   /* =======================================================
-     VOZ
+     HORAS
   ======================================================= */
 
   new SlashCommandBuilder()
@@ -143,6 +149,10 @@ const commands = [
       'Mostra suas horas acumuladas em call.',
     ),
 
+  /* =======================================================
+     RANKING DE VOZ
+  ======================================================= */
+
   new SlashCommandBuilder()
     .setName('ranking-voz')
     .setDescription(
@@ -150,44 +160,15 @@ const commands = [
     ),
 
   /* =======================================================
-     ADMINISTRAÇÃO
+     TICKET SETUP
   ======================================================= */
 
-  adminCommand,
+  new SlashCommandBuilder()
+    .setName('ticket-setup')
+    .setDescription(
+      'Envia a central de tickets.',
+    ),
 
-  configCommand,
-
-  membersCommand,
-
-  moderationCommand,
-
-  /* =======================================================
-     OPERAÇÕES
-  ======================================================= */
-
-  operationsCommand,
-
-  missionsCommand,
-
-  /* =======================================================
-     EMPRÉSTIMOS
-  ======================================================= */
-
-  loansCommand,
-
-  /* =======================================================
-     RANKING / PREMIAÇÕES
-  ======================================================= */
-
-  rankingCommand,
-
-  rewardsCommand,
-
-  /* =======================================================
-     TICKETS
-  ======================================================= */
-
-  ticketsCommand,
 ];
 
 /* =========================================================
@@ -195,10 +176,13 @@ const commands = [
 ========================================================= */
 
 export async function registerCommands(): Promise<void> {
+
   console.log('');
+
   console.log(
     '📡 Registrando comandos do Ghost Syndicate...',
   );
+
   console.log('');
 
   const rest =
@@ -209,6 +193,7 @@ export async function registerCommands(): Promise<void> {
     );
 
   try {
+
     const commandData =
       commands.map(
         (command) =>
@@ -224,12 +209,13 @@ export async function registerCommands(): Promise<void> {
     );
 
     for (
-      const command
-      of commandData
+      const command of commandData
     ) {
+
       console.log(
         `   /${command.name}`,
       );
+
     }
 
     console.log('');
@@ -245,6 +231,8 @@ export async function registerCommands(): Promise<void> {
       },
     );
 
+    console.log('');
+
     console.log(
       `✅ ${commandData.length} comandos registrados com sucesso.`,
     );
@@ -254,20 +242,37 @@ export async function registerCommands(): Promise<void> {
     );
 
     console.log('');
-  } catch (error) {
+
+  } catch (
+    error
+  ) {
+
     console.error('');
+
     console.error(
       '❌ Erro ao registrar os comandos:',
     );
-    console.error(error);
+
+    console.error(
+      error,
+    );
+
     console.error('');
 
     throw error;
+
   }
+
 }
 
 /* =========================================================
    EXECUÇÃO DIRETA
+=========================================================
+
+   Não usamos process.exit(0) aqui.
+
+   Isso evita aquele encerramento forçado que apareceu
+   no Windows/tsx depois do registro bem-sucedido.
 ========================================================= */
 
 const currentFile =
@@ -285,15 +290,22 @@ const isDirectExecution =
 if (
   isDirectExecution
 ) {
-  registerCommands()
-    .then(() => {
-      console.log(
-        '✅ Processo de registro finalizado.',
-      );
 
-      process.exit(0);
-    })
-    .catch(() => {
-      process.exit(1);
-    });
+  registerCommands()
+    .catch(
+      (
+        error,
+      ) => {
+
+        console.error(
+          '❌ Falha no registro:',
+          error,
+        );
+
+        process.exitCode =
+          1;
+
+      },
+    );
+
 }
