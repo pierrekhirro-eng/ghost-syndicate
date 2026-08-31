@@ -6,14 +6,16 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 
-import { config } from '../utils/config.js';
+import {
+  config,
+} from '../utils/config.js';
+
+import {
+  adminCommand,
+} from './admin.js';
 
 /* =========================================================
-   COMANDOS PRINCIPAIS
-   =========================================================
-   Mantemos somente os comandos realmente necessários.
-
-   O restante das configurações ficará no painel Web.
+   COMANDOS
 ========================================================= */
 
 const commands = [
@@ -37,23 +39,25 @@ const commands = [
     .setDescription(
       'Registra uma entrada no caixa.',
     )
-    .addIntegerOption((option) =>
-      option
-        .setName('valor')
-        .setDescription(
-          'Valor da entrada em K.',
-        )
-        .setRequired(true)
-        .setMinValue(1),
+    .addIntegerOption(
+      (option) =>
+        option
+          .setName('valor')
+          .setDescription(
+            'Valor da entrada em K.',
+          )
+          .setRequired(true)
+          .setMinValue(1),
     )
-    .addStringOption((option) =>
-      option
-        .setName('motivo')
-        .setDescription(
-          'Motivo da entrada.',
-        )
-        .setRequired(true)
-        .setMaxLength(200),
+    .addStringOption(
+      (option) =>
+        option
+          .setName('motivo')
+          .setDescription(
+            'Motivo da entrada.',
+          )
+          .setRequired(true)
+          .setMaxLength(200),
     ),
 
   /* =======================================================
@@ -65,23 +69,25 @@ const commands = [
     .setDescription(
       'Registra uma saída do caixa.',
     )
-    .addIntegerOption((option) =>
-      option
-        .setName('valor')
-        .setDescription(
-          'Valor da saída em K.',
-        )
-        .setRequired(true)
-        .setMinValue(1),
+    .addIntegerOption(
+      (option) =>
+        option
+          .setName('valor')
+          .setDescription(
+            'Valor da saída em K.',
+          )
+          .setRequired(true)
+          .setMinValue(1),
     )
-    .addStringOption((option) =>
-      option
-        .setName('motivo')
-        .setDescription(
-          'Motivo da saída.',
-        )
-        .setRequired(true)
-        .setMaxLength(200),
+    .addStringOption(
+      (option) =>
+        option
+          .setName('motivo')
+          .setDescription(
+            'Motivo da saída.',
+          )
+          .setRequired(true)
+          .setMaxLength(200),
     ),
 
   /* =======================================================
@@ -93,50 +99,75 @@ const commands = [
     .setDescription(
       'Registra um novo empréstimo.',
     )
-    .addStringOption((option) =>
-      option
-        .setName('tipo')
-        .setDescription(
-          'Tipo do empréstimo.',
-        )
-        .setRequired(true)
-        .addChoices(
-          {
-            name: 'Dinheiro',
-            value: 'DINHEIRO',
-          },
-          {
-            name: 'Veículo',
-            value: 'VEICULO',
-          },
-        ),
+
+    .addUserOption(
+      (option) =>
+        option
+          .setName('membro')
+          .setDescription(
+            'Membro que receberá o empréstimo.',
+          )
+          .setRequired(true),
     )
-    .addStringOption((option) =>
-      option
-        .setName('valor')
-        .setDescription(
-          'Valor ou veículo emprestado.',
-        )
-        .setRequired(true)
-        .setMaxLength(150),
+
+    .addStringOption(
+      (option) =>
+        option
+          .setName('tipo')
+          .setDescription(
+            'Tipo do empréstimo.',
+          )
+          .setRequired(true)
+          .addChoices(
+            {
+              name:
+                '💵 Dinheiro',
+
+              value:
+                'DINHEIRO',
+            },
+
+            {
+              name:
+                '🚗 Veículo',
+
+              value:
+                'VEICULO',
+            },
+          ),
     )
-    .addStringOption((option) =>
-      option
-        .setName('prazo')
-        .setDescription(
-          'Prazo para devolução.',
-        )
-        .setRequired(true)
-        .setMaxLength(100),
+
+    .addStringOption(
+      (option) =>
+        option
+          .setName('valor')
+          .setDescription(
+            'Valor em dinheiro ou item/veículo.',
+          )
+          .setRequired(true)
+          .setMaxLength(150),
     )
-    .addStringOption((option) =>
-      option
-        .setName('juros')
-        .setDescription(
-          'Juros do empréstimo.',
-        )
-        .setRequired(false)
-        .setMaxLength(50),
+
+    .addStringOption(
+      (option) =>
+        option
+          .setName('prazo')
+          .setDescription(
+            'Ex.: 30 dias, 30d, 31/12/2026.',
+          )
+          .setRequired(true)
+          .setMaxLength(100),
+    )
+
+    .addStringOption(
+      (option) =>
+        option
+          .setName('juros')
+          .setDescription(
+            'Ex.: 10% ou Sem juros.',
+          )
+          .setRequired(false)
+          .setMaxLength(50),
     ),
 
   /* =======================================================
@@ -150,7 +181,7 @@ const commands = [
     ),
 
   /* =======================================================
-     RANKING DE VOZ
+     RANKING
   ======================================================= */
 
   new SlashCommandBuilder()
@@ -169,14 +200,22 @@ const commands = [
       'Envia a central de tickets.',
     ),
 
-];
+  /* =======================================================
+     ADMIN
+  ======================================================= */
+
+  adminCommand,
+
+].map(
+  (command) =>
+    command.toJSON(),
+);
 
 /* =========================================================
-   REGISTRO DOS COMANDOS
+   REGISTRO
 ========================================================= */
 
 export async function registerCommands(): Promise<void> {
-
   console.log('');
 
   console.log(
@@ -185,23 +224,25 @@ export async function registerCommands(): Promise<void> {
 
   console.log('');
 
+  /*
+   * ATENÇÃO:
+   * A configuração real do projeto é:
+   *
+   * config.discord.token
+   * config.discord.clientId
+   * config.discord.guildId
+   */
   const rest =
     new REST({
-      version: '10',
+      version:
+        '10',
     }).setToken(
       config.discord.token,
     );
 
   try {
-
-    const commandData =
-      commands.map(
-        (command) =>
-          command.toJSON(),
-      );
-
     console.log(
-      `📦 Total de comandos: ${commandData.length}`,
+      `📦 Total de comandos: ${commands.length}`,
     );
 
     console.log(
@@ -209,13 +250,11 @@ export async function registerCommands(): Promise<void> {
     );
 
     for (
-      const command of commandData
+      const command of commands
     ) {
-
       console.log(
         `   /${command.name}`,
       );
-
     }
 
     console.log('');
@@ -225,16 +264,17 @@ export async function registerCommands(): Promise<void> {
         config.discord.clientId,
         config.discord.guildId,
       ),
+
       {
         body:
-          commandData,
+          commands,
       },
     );
 
     console.log('');
 
     console.log(
-      `✅ ${commandData.length} comandos registrados com sucesso.`,
+      `✅ ${commands.length} comandos registrados com sucesso.`,
     );
 
     console.log(
@@ -246,7 +286,6 @@ export async function registerCommands(): Promise<void> {
   } catch (
     error
   ) {
-
     console.error('');
 
     console.error(
@@ -260,19 +299,11 @@ export async function registerCommands(): Promise<void> {
     console.error('');
 
     throw error;
-
   }
-
 }
 
 /* =========================================================
    EXECUÇÃO DIRETA
-=========================================================
-
-   Não usamos process.exit(0) aqui.
-
-   Isso evita aquele encerramento forçado que apareceu
-   no Windows/tsx depois do registro bem-sucedido.
 ========================================================= */
 
 const currentFile =
@@ -290,22 +321,23 @@ const isDirectExecution =
 if (
   isDirectExecution
 ) {
-
   registerCommands()
-    .catch(
-      (
-        error,
-      ) => {
-
-        console.error(
-          '❌ Falha no registro:',
-          error,
+    .then(
+      () => {
+        console.log(
+          '✅ Processo de registro finalizado.',
         );
 
-        process.exitCode =
-          1;
-
+        process.exit(
+          0,
+        );
+      },
+    )
+    .catch(
+      () => {
+        process.exit(
+          1,
+        );
       },
     );
-
 }

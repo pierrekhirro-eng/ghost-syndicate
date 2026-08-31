@@ -37,6 +37,10 @@ import {
   handleTicketButton,
 } from '../commands/tickets.js';
 
+import {
+  executeEmprestimoCommand,
+} from '../commands/emprestimo.js';
+
 /* =========================================================
    INTERACTION PRINCIPAL
 ========================================================= */
@@ -45,10 +49,9 @@ export async function onInteraction(
   interaction: Interaction,
 ): Promise<void> {
   try {
-    /* =======================================================
-       SLASH COMMANDS
-    ======================================================= */
-
+    /*
+     * Slash commands
+     */
     if (
       interaction.isChatInputCommand()
     ) {
@@ -59,21 +62,16 @@ export async function onInteraction(
       return;
     }
 
-    /* =======================================================
-       BOTÕES
-    ======================================================= */
-
+    /*
+     * Botões
+     */
     if (
       interaction.isButton()
     ) {
       /*
-       * Todos os botões relacionados ao sistema de tickets
-       * usam o tickets.ts.
-       *
-       * Outros botões que eventualmente existirem no bot
-       * não devem cair no sistema de tickets.
+       * Todos os botões do sistema de
+       * tickets são tratados pelo tickets.ts.
        */
-
       if (
         interaction.customId.startsWith(
           'ticket:',
@@ -113,33 +111,40 @@ export async function onInteraction(
 async function handleCommand(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
+  /*
+   * Todos os comandos desta aplicação
+   * precisam estar dentro de um servidor.
+   */
   if (
     !interaction.guild
   ) {
     await safeReply(
       interaction,
+
       '❌ Este comando só pode ser usado dentro de um servidor.',
+
       true,
     );
 
     return;
   }
 
-  /* =======================================================
-     GARANTE GUILD
-  ======================================================= */
-
+  /*
+   * Garante o registro da guild.
+   */
   await ensureGuild(
     interaction.guild.id,
+
     interaction.guild.name,
   );
 
-  /* =======================================================
-     GARANTE MEMBRO
-  ======================================================= */
-
+  /*
+   * Garante que quem executou o comando
+   * exista no banco.
+   */
   await ensureMember(
     interaction.guild.id,
+
     {
       id:
         interaction.user.id,
@@ -160,6 +165,10 @@ async function handleCommand(
   switch (
     interaction.commandName
   ) {
+    /* -------------------------------------------------------
+       CAIXA
+    ------------------------------------------------------- */
+
     case 'caixa':
       await handleCaixa(
         interaction,
@@ -167,21 +176,35 @@ async function handleCommand(
 
       break;
 
+    /* -------------------------------------------------------
+       ENTRADA
+    ------------------------------------------------------- */
+
     case 'entrada':
       await handleMovement(
         interaction,
+
         'IN',
       );
 
       break;
 
+    /* -------------------------------------------------------
+       SAÍDA
+    ------------------------------------------------------- */
+
     case 'saida':
       await handleMovement(
         interaction,
+
         'OUT',
       );
 
       break;
+
+    /* -------------------------------------------------------
+       EMPRÉSTIMO
+    ------------------------------------------------------- */
 
     case 'emprestimo':
       await handleEmprestimo(
@@ -190,12 +213,20 @@ async function handleCommand(
 
       break;
 
+    /* -------------------------------------------------------
+       HORAS
+    ------------------------------------------------------- */
+
     case 'horas':
       await handleHoras(
         interaction,
       );
 
       break;
+
+    /* -------------------------------------------------------
+       RANKING
+    ------------------------------------------------------- */
 
     case 'ranking-voz':
       await handleRankingVoz(
@@ -204,12 +235,20 @@ async function handleCommand(
 
       break;
 
+    /* -------------------------------------------------------
+       TICKETS
+    ------------------------------------------------------- */
+
     case 'ticket-setup':
       await handleTicketSetup(
         interaction,
       );
 
       break;
+
+    /* -------------------------------------------------------
+       ADMIN
+    ------------------------------------------------------- */
 
     case 'admin':
       await executeAdminCommand(
@@ -218,10 +257,16 @@ async function handleCommand(
 
       break;
 
+    /* -------------------------------------------------------
+       DESCONHECIDO
+    ------------------------------------------------------- */
+
     default:
       await safeReply(
         interaction,
+
         '❌ Comando não encontrado.',
+
         true,
       );
 
@@ -255,7 +300,9 @@ async function handleCaixa(
   ) {
     await safeReply(
       interaction,
+
       '❌ O caixa ainda não foi configurado.',
+
       true,
     );
 
@@ -325,6 +372,7 @@ async function handleCaixa(
 
   await safeReply(
     interaction,
+
     embed,
   );
 }
@@ -335,6 +383,7 @@ async function handleCaixa(
 
 async function handleMovement(
   interaction: ChatInputCommandInteraction,
+
   type: 'IN' | 'OUT',
 ): Promise<void> {
   if (
@@ -362,7 +411,9 @@ async function handleMovement(
   ) {
     await safeReply(
       interaction,
+
       '❌ O valor precisa ser maior que **0**.',
+
       true,
     );
 
@@ -374,7 +425,9 @@ async function handleMovement(
   ) {
     await safeReply(
       interaction,
+
       '❌ Informe um motivo válido.',
+
       true,
     );
 
@@ -385,10 +438,15 @@ async function handleMovement(
     const updatedGuild =
       await addMovement(
         interaction.guild.id,
+
         interaction.user.id,
+
         type,
+
         amount,
+
         reason,
+
         interaction.user.tag,
       );
 
@@ -470,6 +528,7 @@ async function handleMovement(
 
     await safeReply(
       interaction,
+
       embed,
     );
   } catch (
@@ -482,7 +541,9 @@ async function handleMovement(
 
     await safeReply(
       interaction,
+
       `❌ ${message}`,
+
       true,
     );
   }
@@ -495,22 +556,20 @@ async function handleMovement(
 async function handleEmprestimo(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
-  await safeReply(
+  /*
+   * A lógica de empréstimos fica isolada
+   * no módulo próprio.
+   *
+   * Isso evita colocar regras de negócio
+   * pesadas dentro deste roteador.
+   */
+  await executeEmprestimoCommand(
     interaction,
-    [
-      '💳 **SISTEMA DE EMPRÉSTIMOS**',
-      '',
-      'O comando foi registrado corretamente.',
-      'A lógica completa de empréstimos será integrada ao módulo financeiro.',
-    ].join(
-      '\n',
-    ),
-    true,
   );
 }
 
 /* =========================================================
-   HORAS
+   HORAS EM CALL
 ========================================================= */
 
 async function handleHoras(
@@ -525,6 +584,7 @@ async function handleHoras(
   const seconds =
     await memberVoiceSeconds(
       interaction.guild.id,
+
       interaction.user.id,
     );
 
@@ -539,9 +599,13 @@ async function handleHoras(
       .setDescription(
         [
           `> **${interaction.user.displayName}**`,
+
           '',
+
           'Seu tempo registrado em canais de voz:',
+
           '',
+
           `# ${duration(
             seconds,
           )}`,
@@ -557,12 +621,13 @@ async function handleHoras(
 
   await safeReply(
     interaction,
+
     embed,
   );
 }
 
 /* =========================================================
-   RANKING
+   RANKING DE VOZ
 ========================================================= */
 
 async function handleRankingVoz(
@@ -577,6 +642,7 @@ async function handleRankingVoz(
   const ranking =
     await topVoice(
       interaction.guild.id,
+
       10,
     );
 
@@ -610,8 +676,11 @@ async function handleRankingVoz(
       .setDescription(
         [
           '> 🟢 **Acompanhamento de atividade em voz**',
+
           '',
+
           'O ranking considera o tempo total acumulado em canais de voz.',
+
           'Quem estiver em call agora continua acumulando tempo em tempo real.',
         ].join(
           '\n',
@@ -628,7 +697,8 @@ async function handleRankingVoz(
   ======================================================= */
 
   if (
-    ranking.length === 0
+    ranking.length ===
+    0
   ) {
     embed.addFields({
       name:
@@ -642,14 +712,8 @@ async function handleRankingVoz(
       new ActionRowBuilder<ButtonBuilder>()
         .addComponents(
           new ButtonBuilder()
-            .setCustomId(
-              'ranking:web',
-            )
             .setLabel(
-              'Abrir Ranking',
-            )
-            .setEmoji(
-              '🌐',
+              '🌐 Abrir Ranking',
             )
             .setStyle(
               ButtonStyle.Link,
@@ -695,7 +759,7 @@ async function handleRankingVoz(
     ).length;
 
   /* =======================================================
-     TEXTO
+     CLASSIFICAÇÃO
   ======================================================= */
 
   const rankingText =
@@ -705,10 +769,11 @@ async function handleRankingVoz(
           member,
           index,
         ) => {
-
           const prefix =
             medals[index] ??
-            `**${index + 1}.**`;
+            `**${
+              index + 1
+            }.**`;
 
           const live =
             member.active
@@ -738,6 +803,7 @@ async function handleRankingVoz(
       value:
         [
           `**${leader.name}**`,
+
           `⏱️ \`${duration(
             leader.seconds,
           )}\``,
@@ -780,9 +846,6 @@ async function handleRankingVoz(
     new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId(
-            'ranking:web',
-          )
           .setLabel(
             'Abrir Ranking Completo',
           )
@@ -816,12 +879,9 @@ async function handleUnknownButton(
   interaction: ButtonInteraction,
 ): Promise<void> {
   /*
-   * Botões que não pertencem ao sistema de tickets
-   * não devem quebrar a interação.
-   *
-   * O ranking usa LinkButton e normalmente não chega aqui.
+   * Botões de link normalmente não chegam
+   * aqui, mas mantemos esta proteção.
    */
-
   if (
     interaction.customId ===
     'ranking:web'
@@ -831,7 +891,9 @@ async function handleUnknownButton(
 
   await safeReply(
     interaction,
+
     '❌ Essa ação não está disponível.',
+
     true,
   );
 }
@@ -851,10 +913,9 @@ async function safeReply(
 
   ephemeral = false,
 ): Promise<void> {
-  /* =======================================================
-     TEXTO
-  ======================================================= */
-
+  /*
+   * TEXTO
+   */
   if (
     typeof content ===
     'string'
@@ -864,6 +925,7 @@ async function safeReply(
     ) {
       await interaction.followUp({
         content,
+
         ephemeral,
       });
 
@@ -882,16 +944,16 @@ async function safeReply(
 
     await interaction.reply({
       content,
+
       ephemeral,
     });
 
     return;
   }
 
-  /* =======================================================
-     EMBED
-  ======================================================= */
-
+  /*
+   * EMBED
+   */
   if (
     interaction.replied
   ) {
