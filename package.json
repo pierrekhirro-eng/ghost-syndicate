@@ -6,6 +6,7 @@
     "dev:web": "tsx apps/web/src/server.ts",
     "dev": "concurrently \"npm run dev:bot\" \"npm run dev:web\"",
     "build": "tsc -p apps/bot/tsconfig.json && tsc -p apps/web/tsconfig.json",
+    "db:seed": "tsx prisma/seed.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
